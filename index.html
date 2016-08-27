@@ -34,7 +34,32 @@
         <div class="span9" id="main">
           
 <h1><a name="Linq-Expression-Optimizer" class="anchor" href="#Linq-Expression-Optimizer">Linq.Expression.Optimizer</a></h1>
-<p>Documentation</p>
+<p>Lightweight optimizer of System.Linq.Expression expressions.
+Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations.
+For side-effect free Expressions. No compilation-subjective optimizations.
+This is meant to be used with expressions that are not compiled but transferred to other domain.</p>
+<h2><a name="Supported-optimizations" class="anchor" href="#Supported-optimizations">Supported optimizations</a></h2>
+<p>Example as a quote. There are various other cases also.</p>
+<ul>
+<li>Replace constants comparisons: <code>3 &lt; 4  -&gt;  true</code></li>
+<li>Remove anonymous types: <code>new AnonymousObject(Item1 = x, Item2 = "").Item1  --&gt;  x</code></li>
+<li>Cut not used condition: <code>if false then x else y  -&gt;  y</code></li>
+<li>Remove not: <code>not(false)  -&gt;  true</code></li>
+<li>
+Boolean algebra reductions:
+<ul>
+<li>gather: <code>(x or y) and (x or z)  -&gt;  x or z</code></li>
+<li>identity:  <code>true and x  -&gt;  true</code></li>
+<li>annihilate:  <code>not(x) and y  -&gt;  x</code></li>
+<li>absorb:  <code>x and (x or y) -&gt;  x</code></li>
+<li>idempotence:  <code>y or y  -&gt;  y</code></li>
+<li>complement:  <code>x and not(x)  -&gt; false</code></li>
+<li>doubleNegation: <code>not(not(y))  -&gt;  y</code></li>
+<li>deMorgan: ` not(x) and not(y)  -&gt;  not(x or y)</li>
+</ul>
+</li>
+</ul>
+<h2><a name="Installation" class="anchor" href="#Installation">Installation</a></h2>
 <div class="row">
   <div class="span1"></div>
   <div class="span6">
@@ -46,7 +71,7 @@
   <div class="span1"></div>
 </div>
 <p>Currently Linq.Expression.Optimizer is using .NET Framework 4.5.</p>
-<h2><a name="Example-C" class="anchor" href="#Example-C"># Example (C#)</a></h2>
+<h2><a name="Example-C" class="anchor" href="#Example-C">Example (C#)</a></h2>
 <p>This example demonstrates using a function defined in this sample library.</p>
 <table class="pre"><tr><td class="lines"><pre class="fssnip"><span class="l"> 1: </span>
 <span class="l"> 2: </span>
@@ -92,7 +117,7 @@
     }
 }
 </code></pre></td></tr></table>
-<h2><a name="Example-F" class="anchor" href="#Example-F"># Example (F#)</a></h2>
+<h2><a name="Example-F" class="anchor" href="#Example-F">Example (F#)</a></h2>
 <table class="pre"><tr><td class="lines"><pre class="fssnip"><span class="l"> 1: </span>
 <span class="l"> 2: </span>
 <span class="l"> 3: </span>
