@@ -142,7 +142,6 @@ If you use other expression tree visitors like <a href="https://github.com/scott
 lambdas to another lambdas to get bigger expression trees. Usually this is not visible to the user. But the end result is:
 You endup in a situation where your SQL-query or whatever expression is massive.</p>
 <p>Let's see an example, with fairly simple LINQ-query:</p>
-<p>*</p>
 <table class="pre"><tr><td class="lines"><pre class="fssnip"><span class="l">1: </span>
 <span class="l">2: </span>
 <span class="l">3: </span>
@@ -209,7 +208,7 @@ And this is correct. Now this will be transferred to the other domain, e.g. SQL.
 <span class="c">// _arg1 =&gt; new AnonymousObject(Item1 = _arg1.MyProperty1, Item2 = _arg1.MyProperty2).Item2</span>
 
 <span class="c">// Final result:</span>
-_arg<span class="n">1</span> <span class="o">=</span><span class="o">&gt;</span> _arg<span class="n">1</span>.MyProperty<span class="n">2</span>.Item<span class="n">2</span>
+_arg<span class="n">1</span> <span class="o">=</span><span class="o">&gt;</span> _arg<span class="n">1</span>.MyProperty<span class="n">2</span>
 </code></pre></td></tr></table>
 <p>...and if you see the original LINQ, you can see that this is exactly what you want!</p>
 <h2><a name="How-can-I-test-that-it-produced-correct-result" class="anchor" href="#How-can-I-test-that-it-produced-correct-result">How can I test that it produced correct result?</a></h2>
