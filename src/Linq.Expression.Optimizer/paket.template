@@ -1,0 +1,25 @@
+type project
+title
+    Linq.Expression.Optimizer
+owners
+    Tuomas Hietanen
+authors 
+    Tuomas Hietanen
+projectUrl
+    https://github.com/Thorium/Linq.Expression.Optimizer
+iconUrl
+    https://raw.githubusercontent.com/Thorium/Linq.Expression.Optimizer/master/docs/files/img/logo.png
+licenseUrl
+    https://github.com/Thorium/Linq.Expression.Optimizer/blob/master/LICENSE.txt
+requireLicenseAcceptance
+    false
+copyright
+    Copyright 2015
+tags
+    LINQ, Expression, Expressions, Expression tree, expressiontree, expression-tree, IQueryable, System.Linq.Expressions, optimise, optimize, compile, boolean, algebra, deMorgan, reduction, optimizer, optimiser, tree
+summary
+    Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For expressions that are not compiled to IL.
+description
+    Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For side-effect free Expressions. No compilation-subjective optimizations.
+
+
