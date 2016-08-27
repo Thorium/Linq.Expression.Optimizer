@@ -102,7 +102,9 @@ let optimized = ExpressionOptimizer.visit(qry.Expression)
 
 
 (**
-Some more info
+
+For more motivation why to use this, see: [Tutorial](tutorial.html)
+
 
 Samples & documentation
 -----------------------

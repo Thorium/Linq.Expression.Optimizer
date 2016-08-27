@@ -78,7 +78,7 @@ You endup in a situation where your SQL-query or whatever expression is massive.
 
 Let's see an example, with fairly simple LINQ-query:
 
-**)
+*)
 
 let qry = 
     query {
@@ -126,7 +126,7 @@ And if you run this through this Linq.Expression.Optimizer, it will give the fol
 // _arg1 => new AnonymousObject(Item1 = _arg1.MyProperty1, Item2 = _arg1.MyProperty2).Item2
 
 // Final result:
-_arg1 => _arg1.MyProperty2.Item2
+_arg1 => _arg1.MyProperty2
 ```
 
 ...and if you see the original LINQ, you can see that this is exactly what you want!
