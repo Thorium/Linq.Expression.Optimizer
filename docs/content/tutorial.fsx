@@ -29,22 +29,26 @@ let qry =
         let y = x+1
         where ((x>1 && (((x<2) && (x<2) && (v=false)) || (y>3) && (x<2))) 
               || (not(not(x < 2)) && ((v && not(v)) || (v)) || (v && (4>y))))
-        select ((((x<2) && (x<2) && (v=false)) || (y>3) && (x<2)) && (not(not(not(x>3))) && true) || (not(not(x < 2))))
+        select ((((x<2) && (x<2) && (v=false)) || (y>3) && (x<2)) 
+                && (not(not(not(x>3))) && true) || (not(not(x < 2))))
     }
 
 (**
 Evaluating `qry.Expression.ToString()` will give a result:
 
 ```
-[1; 2; 3; ... ].Select(_arg1 => new AnonymousObject`2(Item1 = _arg1, Item2 = (_arg1 + 1)))
-                .Where(tupledArg => (((tupledArg.Item1 > 1) AndAlso ((((tupledArg.Item1 < 2) 
-                       AndAlso (tupledArg.Item1 < 2)) AndAlso (FSI_0047.v == False)) OrElse 
-                       ((tupledArg.Item2 > 3) AndAlso (tupledArg.Item1 < 2)))) OrElse ((Not(Not((tupledArg.Item1 < 2))) 
-                       AndAlso ((FSI_0047.v AndAlso Not(FSI_0047.v)) OrElse FSI_0047.v)) OrElse 
-                       (FSI_0047.v AndAlso (4 > tupledArg.Item2))))).Select(tupledArg => ((((((tupledArg.Item1 < 2)
-                       AndAlso (tupledArg.Item1 < 2)) AndAlso (FSI_0047.v == False)) OrElse ((tupledArg.Item2 > 3) 
-                       AndAlso (tupledArg.Item1 < 2))) AndAlso (Not(Not(Not((tupledArg.Item1 > 3)))) AndAlso True)) 
-                       OrElse Not(Not((tupledArg.Item1 < 2)))))
+[1; 2; 3; ... ]
+    .Select(_arg1 => new AnonymousObject`2(Item1 = _arg1, Item2 = (_arg1 + 1)))
+    .Where(tupledArg => (((tupledArg.Item1 > 1) AndAlso ((((tupledArg.Item1 < 2) 
+            AndAlso (tupledArg.Item1 < 2)) AndAlso (FSI_0047.v == False)) OrElse 
+            ((tupledArg.Item2 > 3) AndAlso (tupledArg.Item1 < 2)))) OrElse 
+            ((Not(Not((tupledArg.Item1 < 2))) AndAlso ((FSI_0047.v AndAlso 
+            Not(FSI_0047.v)) OrElse FSI_0047.v)) OrElse (FSI_0047.v AndAlso 
+            (4 > tupledArg.Item2))))).Select(tupledArg => ((((((tupledArg.Item1 < 2)
+            AndAlso (tupledArg.Item1 < 2)) AndAlso (FSI_0047.v == False)) 
+            OrElse ((tupledArg.Item2 > 3) AndAlso (tupledArg.Item1 < 2))) 
+            AndAlso (Not(Not(Not((tupledArg.Item1 > 3)))) AndAlso True)) 
+            OrElse Not(Not((tupledArg.Item1 < 2)))))
 ```
 *)
 
@@ -54,11 +58,13 @@ let optimized = ExpressionOptimizer.visit(qry.Expression)
 Evaluating `optimized.ToString()` will give a result:
 
 ```
-  [1; 2; 3; ... ].Select(_arg1 => new AnonymousObject`2(Item1 = _arg1, Item2 = (_arg1 + 1)))
-                 .Where(tupledArg => (((tupledArg.Item1 > 1) AndAlso ((tupledArg.Item2 > 3) 
-                        AndAlso (tupledArg.Item1 < 2))) OrElse ((tupledArg.Item1 < 2) OrElse 
-                        (4 > tupledArg.Item2)))).Select(tupledArg => ((((tupledArg.Item2 > 3) AndAlso 
-                        (tupledArg.Item1 < 2)) AndAlso Not((tupledArg.Item1 > 3))) OrElse (tupledArg.Item1 < 2)))
+  [1; 2; 3; ... ]
+    .Select(_arg1 => new AnonymousObject`2(Item1 = _arg1, Item2 = (_arg1 + 1)))
+    .Where(tupledArg => (((tupledArg.Item1 > 1) AndAlso ((tupledArg.Item2 > 3) 
+        AndAlso (tupledArg.Item1 < 2))) OrElse ((tupledArg.Item1 < 2) OrElse 
+        (4 > tupledArg.Item2)))).Select(tupledArg => ((((tupledArg.Item2 > 3) 
+        AndAlso (tupledArg.Item1 < 2)) AndAlso Not((tupledArg.Item1 > 3))) 
+        OrElse (tupledArg.Item1 < 2)))
 ```
 
 So still bad, but not so bad.
@@ -73,6 +79,7 @@ You endup in a situation where your SQL-query or whatever expression is massive.
 Let's see an example, with fairly simple LINQ-query:
 
 **)
+
 let qry = 
     query {
         for x in xs do
@@ -81,7 +88,7 @@ let qry =
         select (b)
     }
 
-(*
+(**
 
 This will produce you three lamdas:
  
@@ -134,7 +141,16 @@ open System.Collections.Generic
 open System.Linq.Expressions
 open Microsoft.FSharp.Linq.RuntimeHelpers
 
-let test1 = Expression.Lambda(qry.Expression).Compile().DynamicInvoke() :?> System.Collections.Generic.IEnumerable<bool>|> Seq.toList
-let ensureCorrectness = Expression.Lambda(optimized).Compile().DynamicInvoke() :?> System.Collections.Generic.IEnumerable<bool>|> Seq.toList
+let executeExpression (e:Expression) =
+    Expression.Lambda(e).Compile().DynamicInvoke() 
+    :?> System.Collections.Generic.IEnumerable<bool>|> Seq.toList
+
+let test1 = executeExpression qry.Expression
+let ensureCorrectness = executeExpression optimized
 // both are: bool list = [true; false]
 
+(**
+
+More you can read from the [source code](https://github.com/Thorium/Linq.Expression.Optimizer/blob/master/src/Linq.Expression.Optimizer/ExpressionOptimizer.fs) which is pretty simple.
+
+*)

@@ -7,7 +7,33 @@
 Linq.Expression.Optimizer
 ======================
 
-Documentation
+Lightweight optimizer of System.Linq.Expression expressions. 
+Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. 
+For side-effect free Expressions. No compilation-subjective optimizations. 
+This is meant to be used with expressions that are not compiled but transferred to other domain.
+
+Supported optimizations
+-------
+
+Example as a quote. There are various other cases also.
+
+- Replace constants comparisons: ` 3 < 4  ->  true ` 
+- Remove anonymous types: ` new AnonymousObject(Item1 = x, Item2 = "").Item1  -->  x `
+- Cut not used condition: ` if false then x else y  ->  y `
+- Remove not: ` not(false)  ->  true `
+- Boolean algebra reductions:
+  * gather: `(x or y) and (x or z)  ->  x or z `
+  * identity:  ` true and x  ->  true `
+  * annihilate:  ` not(x) and y  ->  x `
+  * absorb:  ` x and (x or y) ->  x `
+  * idempotence:  ` y or y  ->  y `
+  * complement:  ` x and not(x)  -> false `
+  * doubleNegation: ` not(not(y))  ->  y `
+  * deMorgan: ` not(x) and not(y)  ->  not(x or y)
+
+
+Installation
+-------
 
 <div class="row">
   <div class="span1"></div>
@@ -22,7 +48,7 @@ Documentation
 
 Currently Linq.Expression.Optimizer is using .NET Framework 4.5.
 
-# Example (C#)
+Example (C#)
 -------
 
 This example demonstrates using a function defined in this sample library.
@@ -51,7 +77,7 @@ class Program
 }
 ```
 
-# Example (F#)
+Example (F#)
 -------
 
 
