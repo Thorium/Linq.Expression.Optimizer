@@ -12,19 +12,19 @@ This is meant to be used with expressions that are not compiled but transferred 
 
 Example as a quote. There are various other cases also.
 
-- Replace constants comparisons: ` 3 < 4  ->  true ` 
-- Remove anonymous types: ` new AnonymousObject(Item1 = x, Item2 = "").Item1  -->  x `
-- Cut not used condition: ` if false then x else y  ->  y `
-- Remove not: ` not(false)  ->  true `
+- Replace constants comparisons:    ` 3 < 4  ->  true ` 
+- Remove anonymous types:    ` new AnonymousObject(Item1 = x, Item2 = "").Item1  -->  x `
+- Cut not used condition:    ` if false then x else y  ->  y `
+- Remove not:    ` not(false)  ->  true `
 - Boolean algebra reductions:
-  * gather: `(x or y) and (x or z)  ->  x or z `
-  * identity:  ` true and x  ->  true `
-  * annihilate:  ` not(x) and y  ->  x `
-  * absorb:  ` x and (x or y) ->  x `
-  * idempotence:  ` y or y  ->  y `
-  * complement:  ` x and not(x)  -> false `
-  * doubleNegation: ` not(not(y))  ->  y `
-  * deMorgan: ` not(x) and not(y)  ->  not(x or y)
+  * gather            `(x or y) and (x or z)   ->  y or z `  
+  * identity          ` (x=false) or y  ->  y `              
+  * annihilate        ` (x=false) and y  ->  x `             
+  * absorb            ` x and (x or y)  ->  x `              
+  * idempotence       ` y or y  ->  y `                      
+  * complement        ` x and not(x)  ->  false `            
+  * doubleNegation    ` not(not(y))  ->  y `                 
+  * deMorgan          ` not(x) and not(y)  ->  not(x or y) ` 
 
 
 ## Background
