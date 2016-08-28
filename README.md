@@ -12,12 +12,11 @@ This is meant to be used with expressions that are not compiled but transferred 
 
 Example as a quote. There are various other cases also.
 
-- Replace constants comparisons: ` 3 < 4  ->  true ` 
-- Remove anonymous types: ` new AnonymousObject(Item1 = x, Item2 = "").Item1  -->  x `
-- Cut not used condition: ` if false then x else y  ->  y `
-- Remove not: ` not(false)  ->  true `
+- Replace constants comparisons:    ` 3 < 4  ->  true ` 
+- Remove anonymous types:    ` new AnonymousObject(Item1 = x, Item2 = "").Item1  -->  x `
+- Cut not used condition:    ` if false then x else y  ->  y `
+- Remove not:    ` not(false)  ->  true `
 - Boolean algebra reductions:
-
   * gather            `(x or y) and (x or z)   ->  y or z `  
   * identity          ` (x=false) or y  ->  y `              
   * annihilate        ` (x=false) and y  ->  x `             
