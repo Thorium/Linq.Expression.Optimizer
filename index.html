@@ -47,16 +47,14 @@ This is meant to be used with expressions that are not compiled but transferred 
 <li>Remove not: <code>not(false)  -&gt;  true</code></li>
 <li>
 Boolean algebra reductions:
-<ul>
-<li>gather: <code>(x or y) and (x or z)  -&gt;  x or z</code></li>
-<li>identity:  <code>true and x  -&gt;  true</code></li>
-<li>annihilate:  <code>not(x) and y  -&gt;  x</code></li>
-<li>absorb:  <code>x and (x or y) -&gt;  x</code></li>
-<li>idempotence:  <code>y or y  -&gt;  y</code></li>
-<li>complement:  <code>x and not(x)  -&gt; false</code></li>
-<li>doubleNegation: <code>not(not(y))  -&gt;  y</code></li>
-<li>deMorgan: ` not(x) and not(y)  -&gt;  not(x or y)</li>
-</ul>
+| gather          |  <code>(x or y) and (x or z)   -&gt;  y or z</code>  |
+| identity        |  <code>(x=false) or y  -&gt;  y</code>              |
+| annihilate      |  <code>(x=false) and y  -&gt;  x</code>             |
+| absorb          |  <code>x and (x or y)  -&gt;  x</code>              |
+| idempotence     |  <code>y or y  -&gt;  y</code>                      |
+| complement      |  <code>x and not(x)  -&gt;  false</code>            |
+| doubleNegation  |  <code>not(not(y))  -&gt;  y</code>                 |
+| deMorgan        |  <code>not(x) and not(y)  -&gt;  not(x or y)</code> |
 </li>
 </ul>
 <h2><a name="Installation" class="anchor" href="#Installation">Installation</a></h2>
