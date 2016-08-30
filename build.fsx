@@ -395,7 +395,7 @@ Target "All" DoNothing
   ==> "KeepRunning"
 
 "BuildPackage"
-//  ==> "PublishNuget"
+  ==> "PublishNuget"
   ==> "Release"
 
 "ReleaseDocs"

@@ -66,13 +66,21 @@ class Program
 
         var qry =
             from x in xs
-            select !!!(x > 3) && true;
+            select !!!((new { MyUnUsedItem = 123, 
+                              MyItem = new Tuple<int, int>(x, 2).Item1
+                            }.MyItem) > 3) && true;
 
         var optimized = ExpressionOptimizer.visit(qry.Expression);
 
         Console.WriteLine(qry.Expression);
+            // System.Int32[].Select(x => (Not(Not(Not((
+            // new <>f__AnonymousType0`2(MyUnUsedItem = 123, 
+            // MyItem = new Tuple`2(x, 2).Item1).MyItem > 3)))) AndAlso True))
+
         Console.WriteLine(optimized);
+            // System.Int32[].Select(x => Not((x > 3)))
         Console.ReadLine();
+
     }
 }
 ```

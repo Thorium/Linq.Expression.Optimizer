@@ -9,7 +9,7 @@ open System.Reflection
 /// Purpose of this is optimize away already known constant=constant style expressions.
 ///   7 > 8      -->   False
 /// "G" = "G"    -->   True
-let ``replace constant comparison`` (e:Expression) =
+let internal ``replace constant comparison`` (e:Expression) =
     match e with
     | (:? BinaryExpression as ce) -> 
         let (|Constant|_|) (e:Expression) = 
@@ -33,9 +33,10 @@ let ``replace constant comparison`` (e:Expression) =
 
 /// Purpose of this is to replace non-used anonymous types:
 /// new AnonymousObject(Item1 = x, Item2 = "").Item1    -->   x
-let ``remove AnonymousType`` (e:Expression) =
+let internal ``remove AnonymousType`` (e:Expression) =
     if e = Unchecked.defaultof<Expression> then e else 
     match e.NodeType, e with
+    //FShap anonymous type:
     | ExpressionType.MemberAccess, ( :? MemberExpression as me)
         when me.Member.DeclaringType.Name.ToUpper().StartsWith("ANONYMOUSOBJECT") || me.Member.DeclaringType.Name.ToUpper().StartsWith("TUPLE") ->
             let memberIndex = 
@@ -49,10 +50,36 @@ let ``remove AnonymousType`` (e:Expression) =
                     ne.Arguments.[idx-1] // We found it!
                 else e
             | _ -> e
+    //CSharp anonymous type:
+    | ExpressionType.MemberAccess, ( :? MemberExpression as me)
+        when me.Member.DeclaringType.Name.ToUpper().StartsWith("<>F__ANONYMOUSTYPE") || me.Member.DeclaringType.Name.ToUpper().StartsWith("TUPLE") ->
+            match me.Expression.NodeType, me.Expression, me.Member with 
+            | ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when ne.Arguments <> null && p <> null -> 
+                    let selected = ne.Arguments |> Seq.tryPick(function
+                        | :? MemberExpression as ame when ame.Member <> null && ame.Member.Name = me.Member.Name && ame.Type = p.PropertyType ->
+                           Some(ame :> Expression)
+                        |_ -> None)
+                    match selected with 
+                    | Some x -> x 
+                    | None when ne.Members <> null -> 
+                        let selected = ne.Members |> Seq.tryPick(function
+                            | m when m.Name = me.Member.Name ->
+                                let idx = ne.Members.IndexOf(m)
+                                if ne.Arguments.Count > idx then
+                                    match ne.Arguments.[idx] with
+                                    | :? ParameterExpression as ape when ape.Type = p.PropertyType ->
+                                        Some(ape :> Expression)
+                                    | _ -> None
+                                else None
+                            |_ -> None)
+                        match selected with Some x -> x | None -> e
+                    | None -> e
+            | _ -> e
     | _ -> e
 
+
 //
-let ``cut not used condition`` (e:Expression) =
+let internal ``cut not used condition`` (e:Expression) =
     match e.NodeType, e with
     | ExpressionType.Conditional,        (:? ConditionalExpression as ce) -> 
         match ce.Test with // For now, only direct booleans conditions are optimized to select query:
@@ -61,7 +88,7 @@ let ``cut not used condition`` (e:Expression) =
         | _ -> e
     | _ -> e
 
-let ``not false is true``(e:Expression) =
+let internal ``not false is true``(e:Expression) =
     match e.NodeType, e with
     | ExpressionType.Not, (:? UnaryExpression as ue) -> 
         match ue.Operand with
@@ -82,34 +109,34 @@ let ``not false is true``(e:Expression) =
 open Microsoft.FSharp.Quotations
 open System.Linq.Expressions
 
-let (|Value|_|) (e:Expression) = 
+let internal (|Value|_|) (e:Expression) = 
     match e.NodeType, e with 
     | ExpressionType.Constant, (:? ConstantExpression as ce) -> Some (ce.Value, ce.Type)
     | _ -> None
 
-let (|IfThenElse|_|) (e:Expression) = 
+let internal (|IfThenElse|_|) (e:Expression) = 
     match e.NodeType, e with 
     | ExpressionType.Conditional, (:? ConditionalExpression as ce) -> Some (ce.Test, ce.IfTrue, ce.IfFalse)
     | _ -> None
 
-let (|Not'|_|) (e:Expression) =
+let internal (|Not'|_|) (e:Expression) =
     match e.NodeType, e with
     | ExpressionType.Not, (:? UnaryExpression as ue) -> Some(ue.Operand)
     | _ -> None
 
-let (|True'|_|) expr =
+let internal (|True'|_|) expr =
     match expr with
     | Value (o, t) when t = typeof<bool> && (o :?> bool) = true ->
         Some expr
     | _ -> None
 
-let (|False'|_|) expr =
+let internal (|False'|_|) expr =
     match expr with
     | Value (o, t) when t = typeof<bool> && (o :?> bool) = false ->
         Some expr
     | _ -> None
 
-let (|Or'|_|) (e:Expression) =
+let internal (|Or'|_|) (e:Expression) =
     match e.NodeType, e with
     | _, IfThenElse (left, True' _, right) ->
         Some (left, right)
@@ -117,7 +144,7 @@ let (|Or'|_|) (e:Expression) =
     //| ExpressionType.Or, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
     | _ -> None
 
-let (|And'|_|) (e:Expression) =
+let internal (|And'|_|) (e:Expression) =
     match e.NodeType, e with
     | _, IfThenElse (left, right, False' _) ->
         Some (left, right)
@@ -126,7 +153,7 @@ let (|And'|_|) (e:Expression) =
     | _ -> None
 
 // This would just cause looping...
-//let associate = function
+//let internal associate = function
 //    | Or' (Or' (l, r), r') -> Expression.OrElse(Expression.OrElse(l, r), r') :> Expression
 //    | Or' (l, Or' (l', r)) -> Expression.OrElse(l, Expression.OrElse(l', r)) :> Expression
 //    | And' (And' (l, r), r') -> Expression.AndAlso(Expression.AndAlso(l, r), r') :> Expression
@@ -134,23 +161,23 @@ let (|And'|_|) (e:Expression) =
 //    | noHit -> noHit
 
 // We commute to AndAlso and OrElse, if not already in that format
-let commute = function
+let internal commute = function
     | Or' (left, right) as comex when comex.NodeType <> ExpressionType.OrElse -> Expression.OrElse(right, left) :> Expression
     | And' (left, right) as comex when comex.NodeType <> ExpressionType.AndAlso -> Expression.AndAlso(right, left) :> Expression
     | noHit -> noHit
 
 // This would just cause looping...
-//let distribute = function
+//let internal distribute = function
 //    | And' (p, Or' (p', p'')) -> Expression.OrElse(Expression.AndAlso(p, p'), Expression.AndAlso(p, p'')) :> Expression
 //    | Or' (p, And' (p', p'')) -> Expression.AndAlso(Expression.OrElse(p, p'), Expression.OrElse(p, p'')) :> Expression
 //    | noHit -> noHit
 
-let gather = function
+let internal gather = function
     | And' (Or'(p, p'), Or'(p'', p''')) when p = p'' -> Expression.OrElse(p, Expression.AndAlso(p', p''')) :> Expression
     | Or' (And'(p, p'), And'(p'', p''')) when p = p'' -> Expression.AndAlso(p, Expression.OrElse(p', p''')) :> Expression
     | noHit -> noHit
 
-let identity = function
+let internal identity = function
     | And' (True' _, p)
     | And' (p, True' _)
     | Or' (False' _, p) 
@@ -158,14 +185,14 @@ let identity = function
         -> p
     | noHit -> noHit
 
-let annihilate = function
+let internal annihilate = function
     | And' (False' f, _)
     | And' (_, False' f) -> f
     | Or' (True' t, _) 
     | Or' (_, True' t) -> t
     | noHit -> noHit
 
-let absorb = function
+let internal absorb = function
     | And' (p, Or' (p', _)) 
     | And' (p, Or' (_, p')) 
     | And' (Or' (p', _), p)
@@ -176,31 +203,31 @@ let absorb = function
     | Or' (And' (_, p'), p) when p = p' -> p
     | noHit -> noHit
 
-let idempotence = function
+let internal idempotence = function
     | And' (p, p') when p = p' -> p
     | Or' (p, p')  when p = p' -> p
     | noHit -> noHit
 
-let complement = function
+let internal complement = function
     | And' (p, Not' p')
     | And' (Not' p, p') when p = p' -> Expression.Constant(false, typeof<bool>) :> Expression
     | Or' (p, Not' p')
     | Or' (Not' p, p') when p = p' -> Expression.Constant(true, typeof<bool>) :> Expression
     | noHit -> noHit
 
-let doubleNegation = function
+let internal doubleNegation = function
     | Not' (Not' p) -> p
     | noHit -> noHit
 
-let deMorgan = function
+let internal deMorgan = function
     | Or' (Not' p, Not' p') -> Expression.Not(Expression.AndAlso(p, p')) :> Expression
     | And' (Not' p, Not' p') -> Expression.Not(Expression.OrElse(p, p')) :> Expression
     | noHit -> noHit
 
-/// ------------------------------------- ///
+// ------------------------------------- //
 #if NET45
 /// This is just helping to work with FSI:
-let ``evaluate FSI constants`` (e:Expression) =
+let internal ``evaluate FSI constants`` (e:Expression) =
     match e.NodeType, e with
     // Also we don't want FSharp interactive debugging to mess our expressions:
     | ExpressionType.MemberAccess, ( :? MemberExpression as me) 
@@ -210,10 +237,10 @@ let ``evaluate FSI constants`` (e:Expression) =
             | _ -> e
     | _ -> e
 #endif
-/// ------------------------------------- ///
-let reductionMethods = [
+// ------------------------------------- //
+let internal reductionMethods = [
 #if NET45
-     ``evaluate FSI constants``; 
+     ``evaluate FSI constants``;
 #endif
      ``replace constant comparison``; ``remove AnonymousType``; ``cut not used condition``; ``not false is true``;
      (*associate;*) commute; (*distribute;*) gather; identity; annihilate; absorb; idempotence; complement; doubleNegation; deMorgan]
@@ -226,7 +253,7 @@ let rec doReduction (exp:Expression) =
     | true -> exp
     | false -> doReduction opt
 
- /// ------------------------------------- ///
+// ------------------------------------- //
 
 /// Expression tree visitor: go through the whole expression tree.
 
@@ -239,7 +266,7 @@ let rec visit (exp:Expression): Expression =
     let e2 = doReduction e1
     e2
 
-and visitchilds (e:Expression): Expression =
+and internal visitchilds (e:Expression): Expression =
 
     if e = null then null else
     match e with
