@@ -1,5 +1,5 @@
 ﻿/// This is just a light-weight expression optimizer.
-/// It won't Compile() or do any heavy stuff.
+/// It won't do any heavy stuff...
 module ExpressionOptimizer
 
 open System.Linq.Expressions
@@ -225,23 +225,28 @@ let internal deMorgan = function
     | noHit -> noHit
 
 // ------------------------------------- //
-#if NET45
-/// This is just helping to work with FSI:
-let internal ``evaluate FSI constants`` (e:Expression) =
+/// Evaluating constants to not mess with our expressions:
+let internal ``evaluate constants`` (e:Expression) =
     match e.NodeType, e with
-    // Also we don't want FSharp interactive debugging to mess our expressions:
     | ExpressionType.MemberAccess, ( :? MemberExpression as me) 
-        when me <> null && me.Expression=null && me.Member.DeclaringType.Name.ToUpper().StartsWith("FSI_") -> 
+        when me <> null && me.Expression<>null -> 
+            match me.Expression with
+            | :? ConstantExpression ->
+                 //Constant expression. Can be evaluated.
+                 Expression.Constant(Expression.Lambda(me).Compile().DynamicInvoke(null), me.Type) :> Expression
+            | _ -> e
+    | ExpressionType.MemberAccess, ( :? MemberExpression as me) 
+        when me <> null && me.Expression=null && 
+                (me.Member.DeclaringType.Name.ToUpper().StartsWith("FSI_") 
+                 || me.Member.DeclaringType.Name.ToUpper().StartsWith("<>C__DISPLAYCLASS") ) -> 
             match me.Member with 
-            | :? PropertyInfo as p when p.PropertyType.IsValueType -> Expression.Constant(p.GetValue(p) :?> IComparable, p.PropertyType) :> Expression
+            | :? PropertyInfo as p when p.GetType().FullName.StartsWith("System") -> 
+                    Expression.Constant(Expression.Lambda(me).Compile().DynamicInvoke(null), me.Type) :> Expression
             | _ -> e
     | _ -> e
-#endif
 // ------------------------------------- //
 let internal reductionMethods = [
-#if NET45
-     ``evaluate FSI constants``;
-#endif
+     ``evaluate constants``;
      ``replace constant comparison``; ``remove AnonymousType``; ``cut not used condition``; ``not false is true``;
      (*associate;*) commute; (*distribute;*) gather; identity; annihilate; absorb; idempotence; complement; doubleNegation; deMorgan]
 
