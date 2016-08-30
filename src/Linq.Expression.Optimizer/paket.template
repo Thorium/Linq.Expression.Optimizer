@@ -21,5 +21,11 @@ summary
     Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For expressions that are not compiled to IL.
 description
     Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For side-effect free Expressions. No compilation-subjective optimizations.
-
-
+dependencies
+    FSharp.Core ~> LOCKEDVERSION
+files
+    ../../bin/Linq.Expression.Optimizer/Linq.Expression.Optimizer.dll ==> lib/net45
+    ../../bin/Linq.Expression.Optimizer/Linq.Expression.Optimizer.xml ==> lib/net45
+    ../../bin/Linq.Expression.Optimizer.net35/Linq.Expression.Optimizer.dll ==> lib/net35
+    ../../bin/Linq.Expression.Optimizer.net35/Linq.Expression.Optimizer.xml ==> lib/net35
+    ../../src/Linq.Expression.Optimizer.netcore/bin/Release/netcoreapp1.0/*.* ==> lib/netcoreapp1.0

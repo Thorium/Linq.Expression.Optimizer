@@ -198,7 +198,7 @@ let deMorgan = function
     | noHit -> noHit
 
 /// ------------------------------------- ///
-
+#if NET45
 /// This is just helping to work with FSI:
 let ``evaluate FSI constants`` (e:Expression) =
     match e.NodeType, e with
@@ -209,11 +209,12 @@ let ``evaluate FSI constants`` (e:Expression) =
             | :? PropertyInfo as p when p.PropertyType.IsValueType -> Expression.Constant(p.GetValue(p) :?> IComparable, p.PropertyType) :> Expression
             | _ -> e
     | _ -> e
-
+#endif
 /// ------------------------------------- ///
-
-let reductionMethods = 
-    [``evaluate FSI constants``; 
+let reductionMethods = [
+#if NET45
+     ``evaluate FSI constants``; 
+#endif
      ``replace constant comparison``; ``remove AnonymousType``; ``cut not used condition``; ``not false is true``;
      (*associate;*) commute; (*distribute;*) gather; identity; annihilate; absorb; idempotence; complement; doubleNegation; deMorgan]
 
@@ -239,21 +240,36 @@ let rec visit (exp:Expression): Expression =
     e2
 
 and visitchilds (e:Expression): Expression =
+
     if e = null then null else
     match e with
-    | (:? UnaryExpression as e)       -> upcast Expression.MakeUnary(e.NodeType, visit e.Operand,e.Type,e.Method)
-    | (:? BinaryExpression as e)      -> upcast Expression.MakeBinary(e.NodeType, visit e.Left, visit e.Right)
-    | (:? TypeBinaryExpression as e)  -> upcast Expression.TypeIs(visit e.Expression, e.TypeOperand)
-    | (:? ConditionalExpression as e) -> upcast Expression.Condition(visit e.Test, visit e.IfTrue, visit e.IfFalse)
+    | (:? UnaryExpression as e) -> 
+        let visited = visit e.Operand
+        if visited=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visited,e.Type,e.Method) 
+    | (:? BinaryExpression as e)      -> 
+        if e.NodeType = ExpressionType.Coalesce && e.Conversion <> null then
+            let v1, v2, v3 = visit e.Left, visit e.Right, visit e.Conversion
+            if v1=e.Left && v2=e.Right && v3=(e.Conversion:>Expression) then upcast e else upcast Expression.Coalesce(v1, v2, v3 :?> LambdaExpression)
+        else
+            let v1, v2 = visit e.Left, visit e.Right
+            if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(e.NodeType,v1,v2,e.IsLiftedToNull, e.Method)
+    | (:? TypeBinaryExpression as e)  -> 
+        let v = visit(e.Expression)
+        if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
+    | (:? ConditionalExpression as e) -> 
+        let v1, v2, v3 = visit e.Test, visit e.IfTrue, visit e.IfFalse
+        if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
     | (:? ConstantExpression as e)    -> upcast e
     | (:? ParameterExpression as e)   -> upcast e
-    | (:? MemberExpression as e)      -> upcast Expression.MakeMemberAccess(visit e.Expression, e.Member)
+    | (:? MemberExpression as e)      -> 
+        let v = visit e.Expression
+        if v=e.Expression then upcast e else upcast Expression.MakeMemberAccess(v, e.Member)
     | (:? MethodCallExpression as e)  -> upcast Expression.Call(visit e.Object, e.Method, e.Arguments |> Seq.map(fun a -> visit a))
-    | (:? LambdaExpression as e)      -> upcast Expression.Lambda(e.Type, visit e.Body, e.Parameters)
-    | (:? NewExpression as e) when e.Members = null -> 
-                                         upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a))
-    | (:? NewExpression as e) when e.Members <> null -> 
-                                         upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a), e.Members)
+    | (:? LambdaExpression as e)      -> 
+        let b = visit e.Body 
+        if b=e.Body then upcast e else upcast Expression.Lambda(e.Type, b, e.Parameters)
+    | (:? NewExpression as e) when e.Members = null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a))
+    | (:? NewExpression as e) when e.Members <> null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a), e.Members)
     | (:? NewArrayExpression as e) when e.NodeType = ExpressionType.NewArrayInit ->
                                          upcast Expression.NewArrayBounds(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit e))
     | (:? NewArrayExpression as e)    -> upcast Expression.NewArrayInit(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit e))
