@@ -196,8 +196,8 @@ the whole object as first parameter.</p>
              ).Item<span class="n">2</span>
 </code></pre></td></tr></table>
 <p>Can you follow what happened?
-And this is correct. Now this will be transferred to the other domain, e.g. SQL.</p>
-<p>And if you run this through this Linq.Expression.Optimizer, it will give the following result:</p>
+And this is (kind of) correct. Now this expression will be transferred to the other domain, e.g. SQL. It depends the abilities of the O/R-mapper or what ever tool, that what this produces. But it can easily produce nested SELECT-clauses.</p>
+<p>But...if you run this through this Linq.Expression.Optimizer, it will give the following result:</p>
 <table class="pre"><tr><td class="lines"><pre class="fssnip"><span class="l">1: </span>
 <span class="l">2: </span>
 <span class="l">3: </span>
@@ -210,7 +210,7 @@ And this is correct. Now this will be transferred to the other domain, e.g. SQL.
 <span class="c">// Final result:</span>
 _arg<span class="n">1</span> <span class="o">=</span><span class="o">&gt;</span> _arg<span class="n">1</span>.MyProperty<span class="n">2</span>
 </code></pre></td></tr></table>
-<p>...and if you see the original LINQ, you can see that this is exactly what you want!</p>
+<p>...and if you compare this to the original LINQ, you can see that this is exactly what you want!</p>
 <h2><a name="How-can-I-test-that-it-produced-correct-result" class="anchor" href="#How-can-I-test-that-it-produced-correct-result">How can I test that it produced correct result?</a></h2>
 <table class="pre"><tr><td class="lines"><pre class="fssnip"><span class="l"> 1: </span>
 <span class="l"> 2: </span>
