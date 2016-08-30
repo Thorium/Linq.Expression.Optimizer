@@ -231,7 +231,7 @@ let rec doReduction (exp:Expression) =
 /// Expression tree visitor: go through the whole expression tree.
 
 // .NET has already this System.Linq.Expressions.ExpressionVisitor
-// Too bad I wrote this faster than what it would have taken to get to know that 700 rows of source code!
+// Too bad this was so simple and faster than what it would have taken to get to know that 700 rows of source code!
 let rec visit (exp:Expression): Expression =
     //bottom up:
     if exp = null then null else
