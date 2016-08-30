@@ -1,7 +1,7 @@
 ﻿namespace System
 open System.Reflection
 
-[<assembly: AssemblyTitleAttribute("Linq.Expression.Optimizer")>]
+[<assembly: AssemblyTitleAttribute("Linq.Expression.Optimizer.net35")>]
 [<assembly: AssemblyProductAttribute("Linq.Expression.Optimizer")>]
 [<assembly: AssemblyDescriptionAttribute("Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations.")>]
 [<assembly: AssemblyVersionAttribute("1.0.1")>]

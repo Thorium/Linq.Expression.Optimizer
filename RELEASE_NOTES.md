@@ -1,2 +1,5 @@
+### 1.0.1 - 30/08/2016
+* Support for: net35/net45/netcore
+
 ### 1.0 - 27/08/2016
 * First version

@@ -5,16 +5,16 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>537f1db7-48a5-4bb5-8a21-65ffee8d1166</ProjectGuid>
+    <ProjectGuid>{a393c4c6-9072-4d8c-b99b-a01d3e490cc8}</ProjectGuid>
     <OutputType>Library</OutputType>
     <RootNamespace>Linq.Expression.Optimizer</RootNamespace>
     <AssemblyName>Linq.Expression.Optimizer</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
     <TargetFSharpCoreVersion>4.3.0.0</TargetFSharpCoreVersion>
-    <Name>Linq.Expression.Optimizer</Name>
+    <Name>Linq.Expression.Optimizer.net35</Name>
     <TargetFrameworkProfile />
 	<SignAssembly>true</SignAssembly>
-	<AssemblyOriginatorKeyFile>Linq.Expression.Optimizer.snk</AssemblyOriginatorKeyFile>
+	<AssemblyOriginatorKeyFile>..\Linq.Expression.Optimizer\Linq.Expression.Optimizer.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -22,7 +22,7 @@
     <Optimize>false</Optimize>
     <Tailcalls>false</Tailcalls>
     <OutputPath>.\bin\Debug</OutputPath>
-    <DefineConstants>TRACE;DEBUG;NET45</DefineConstants>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
     <WarningLevel>3</WarningLevel>
     <DocumentationFile>.\bin\$(Configuration)\$(AssemblyName).xml</DocumentationFile>
     <OtherFlags>--warnon:1182</OtherFlags>
@@ -62,19 +62,21 @@
   -->
   <Import Project="..\..\.paket\paket.targets" />
   <ItemGroup>
-    <None Include="Script.fsx" />
     <None Include="paket.references" />
-    <None Include="paket.template" />
     <Content Include="App.config" />
-    <Compile Include="ExpressionOptimizer.fs" />
+    <Compile Include="..\Linq.Expression.Optimizer\ExpressionOptimizer.fs">
+      <Link>ExpressionOptimizer.fs</Link>
+    </Compile>
+    <Compile Include="..\Linq.Expression.Optimizer\AssemblyInfo.fs">
+      <Link>AssemblyInfo.fs</Link>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="FSharp.Core, Version=4.4.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+    <Reference Include="FSharp.Core, Version=2.3.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
       <Private>True</Private>
     </Reference>
     <Reference Include="mscorlib" />
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="System.Numerics" />
   </ItemGroup>
 </Project>
