@@ -94,6 +94,14 @@ Boolean algebra reductions:
 <span class="l">19: </span>
 <span class="l">20: </span>
 <span class="l">21: </span>
+<span class="l">22: </span>
+<span class="l">23: </span>
+<span class="l">24: </span>
+<span class="l">25: </span>
+<span class="l">26: </span>
+<span class="l">27: </span>
+<span class="l">28: </span>
+<span class="l">29: </span>
 </pre></td>
 <td class="snippet"><pre class="fssnip highlighted"><code lang="csharp"><span class="k">using</span> System;
 <span class="k">using</span> System.Linq;
@@ -107,13 +115,21 @@ Boolean algebra reductions:
 
         <span class="k">var</span> qry <span class="o">=</span>
             <span class="k">from</span> x <span class="k">in</span> xs
-            <span class="k">select</span> <span class="o">!</span><span class="o">!</span><span class="o">!</span>(x <span class="o">&gt;</span> <span class="n">3</span>) <span class="o">&amp;</span><span class="o">&amp;</span> <span class="k">true</span>;
+            <span class="k">select</span> <span class="o">!</span><span class="o">!</span><span class="o">!</span>((<span class="k">new</span> { MyUnUsedItem <span class="o">=</span> <span class="n">123</span>, 
+                              MyItem <span class="o">=</span> <span class="k">new</span> Tuple&lt;<span class="k">int</span>, <span class="k">int</span>&gt;(x, <span class="n">2</span>).Item<span class="n">1</span>
+                            }.MyItem) <span class="o">&gt;</span> <span class="n">3</span>) <span class="o">&amp;</span><span class="o">&amp;</span> <span class="k">true</span>;
 
         <span class="k">var</span> optimized <span class="o">=</span> ExpressionOptimizer.visit(qry.Expression);
 
         Console.WriteLine(qry.Expression);
+            <span class="c">// System.Int32[].Select(x =&gt; (Not(Not(Not((</span>
+            <span class="c">// new &lt;&gt;f__AnonymousType0`2(MyUnUsedItem = 123, </span>
+            <span class="c">// MyItem = new Tuple`2(x, 2).Item1).MyItem &gt; 3)))) AndAlso True))</span>
+
         Console.WriteLine(optimized);
+            <span class="c">// System.Int32[].Select(x =&gt; Not((x &gt; 3)))</span>
         Console.ReadLine();
+
     }
 }
 </code></pre></td></tr></table>
