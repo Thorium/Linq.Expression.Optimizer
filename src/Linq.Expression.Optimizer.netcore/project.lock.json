@@ -6767,7 +6767,7 @@
   },
   "projectFileToolGroups": {
     ".NETCoreApp,Version=v1.0": [
-      "dotnet-compile-fsc >= 1.0.0-preview2-*"
+      "dotnet-compile-fsc >= 1.0.0-preview2-020000"
     ]
   }
 }
