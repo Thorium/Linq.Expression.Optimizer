@@ -117,9 +117,9 @@ _arg1 => new AnonymousObject(
 ```
 
 Can you follow what happened?
-And this is correct. Now this will be transferred to the other domain, e.g. SQL.
+And this is (kind of) correct. Now this expression will be transferred to the other domain, e.g. SQL. It depends the abilities of the O/R-mapper or what ever tool, that what this produces. But it can easily produce nested SELECT-clauses.
 
-And if you run this through this Linq.Expression.Optimizer, it will give the following result:
+But...if you run this through this Linq.Expression.Optimizer, it will give the following result:
 
 ```csharp
 // Middle step (not visible to user):
@@ -129,7 +129,8 @@ And if you run this through this Linq.Expression.Optimizer, it will give the fol
 _arg1 => _arg1.MyProperty2
 ```
 
-...and if you see the original LINQ, you can see that this is exactly what you want!
+...and if you compare this to the original LINQ, you can see that this is exactly what you want!
+
 
 ## How can I test that it produced correct result?
 
