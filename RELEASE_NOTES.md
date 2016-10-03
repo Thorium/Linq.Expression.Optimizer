@@ -1,3 +1,6 @@
+### 1.0.4 - 30/08/2016
+* Minor tweaks to optimization
+
 ### 1.0.3 - 30/08/2016
 * Constant evaluation.
 

@@ -33,10 +33,11 @@ type ``Test Fixture`` () =
     let testExpression (qry: IQueryable<'b>) = 
 
         let optimized = ExpressionOptimizer.visit(qry.Expression)
-    
         let expected = executeExpression qry.Expression
-        let actual = executeExpression optimized
-        expected, actual
+        if optimized.GetHashCode() <> qry.Expression.GetHashCode() then
+            let actual = executeExpression optimized
+            expected, actual
+        else expected, expected
 
     let qry1 (arr:int list) =
         query{
@@ -140,6 +141,15 @@ type ``Test Fixture`` () =
             sortByNullable (Nullable(x))
         }
 
+
+    let qry13 (arr:int list) =
+        query{
+            for x in arr.AsQueryable() do
+            where ((x, true) = (x, true) && true)
+            select ((x>0 && x>1 && x>2 && x>3 && x>4 && x>0 && x>1 && x>2 && x>3 && x>4) ||
+                (x<0 || x<1 || x<2 || x<3 || x<4 || x<0 || x<1 || x<2 || x<3 || x<4))
+        }
+
     let testEq (xs:int[]) qry = 
         let res = xs |> Seq.toList |> qry |> testExpression
         res ||> should equal 
@@ -183,8 +193,8 @@ type ``Test Fixture`` () =
     [<Property>]
     member test.``Expression optimizer generates smaller expression4`` (xs:int[]) = testLt xs qry4
 
-//    [<Property>]
-//    member test.``Expression optimizer generates equal results5`` (xs:int[]) = testEq xs qry5
+    [<Property>]
+    member test.``Expression optimizer generates equal results5`` () = testEq [|2;-2|] qry5
     [<Property>]
     member test.``Expression optimizer generates smaller expression5`` (xs:int[]) = testLteq xs qry5
 
@@ -222,4 +232,9 @@ type ``Test Fixture`` () =
     member test.``Expression optimizer generates equal results12`` (xs:int[]) = testEq xs qry12
     [<Property>]
     member test.``Expression optimizer generates smaller expression12`` (xs:int[]) = testLteq xs qry12
+
+    [<Property>]
+    member test.``Expression optimizer generates equal results13`` (xs:int[]) = testEq xs qry13
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression13`` (xs:int[]) = testLt xs qry13
 

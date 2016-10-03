@@ -225,6 +225,19 @@ let internal deMorgan = function
     | noHit -> noHit
 
 // ------------------------------------- //
+
+/// Balance tree that is too much weighted to other side.
+/// The real advantage is not-so-nested-stack
+let internal balancetree = function
+    | Or' (p1,  Or' (p2,  Or' (p3,  Or' (p4,  Or' (p5, Or' (p6, Or' (p7, p8))))))) 
+    | Or' (Or' (Or' (Or' (Or' (Or' (Or' (p1, p2), p3), p4), p5), p6), p7), p8) 
+        -> Expression.OrElse(Expression.OrElse(Expression.OrElse(p1, p2), Expression.OrElse(p3, p4)), Expression.OrElse(Expression.OrElse(p5, p6), Expression.OrElse(p7, p8))) :> Expression
+    | And' (p1,  And' (p2,  And' (p3,  And' (p4,  And' (p5, And' (p6, And' (p7, p8))))))) 
+    | And' (And' (And' (And' (And' (And' (And' (p1, p2), p3), p4), p5), p6), p7), p8) 
+        -> Expression.AndAlso(Expression.AndAlso(Expression.AndAlso(p1, p2), Expression.AndAlso(p3, p4)), Expression.AndAlso(Expression.AndAlso(p5, p6), Expression.AndAlso(p7, p8))) :> Expression
+    | noHit -> noHit
+
+// ------------------------------------- //
 /// Evaluating constants to not mess with our expressions:
 let internal ``evaluate constants`` (e:Expression) =
     match e.NodeType, e with
@@ -248,7 +261,7 @@ let internal ``evaluate constants`` (e:Expression) =
 let internal reductionMethods = [
      ``evaluate constants``;
      ``replace constant comparison``; ``remove AnonymousType``; ``cut not used condition``; ``not false is true``;
-     (*associate;*) commute; (*distribute;*) gather; identity; annihilate; absorb; idempotence; complement; doubleNegation; deMorgan]
+     (*associate;*) commute; (*distribute;*) gather; identity; annihilate; absorb; idempotence; complement; doubleNegation; deMorgan; balancetree]
 
 /// Does reductions just for a current node.
 let rec doReduction (exp:Expression) =
@@ -302,7 +315,7 @@ and internal visitchilds (e:Expression): Expression =
         if b=e.Body then upcast e else upcast Expression.Lambda(e.Type, b, e.Parameters)
     | (:? NewExpression as e) when e.Members = null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a))
     | (:? NewExpression as e) when e.Members <> null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a), e.Members)
-    | (:? NewArrayExpression as e) when e.NodeType = ExpressionType.NewArrayInit ->
+    | (:? NewArrayExpression as e) when e.NodeType = ExpressionType.NewArrayBounds ->
                                          upcast Expression.NewArrayBounds(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit e))
     | (:? NewArrayExpression as e)    -> upcast Expression.NewArrayInit(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit e))
     | (:? InvocationExpression as e)  -> upcast Expression.Invoke(visit e.Expression, e.Arguments |> Seq.map(fun a -> visit a))
