@@ -72,7 +72,7 @@ So still bad, but not so bad.
 ## Anonymous object replacement
 
 The way LINQ is constructed that methods like JOIN, WHERE, SELECT, GROUPBY, ... have all their own little lambda parameters.
-If you use other expression tree visitors like [LINQKit](https://github.com/scottksmith95/LINQKit) these tools often merge 
+If you use other expression tree visitors like [LinqKit](https://github.com/scottksmith95/LINQKit) these tools often merge 
 lambdas to another lambdas to get bigger expression trees. Usually this is not visible to the user. But the end result is:
 You endup in a situation where your SQL-query or whatever expression is massive. 
 
@@ -131,6 +131,7 @@ _arg1 => _arg1.MyProperty2
 
 ...and if you compare this to the original LINQ, you can see that this is exactly what you want!
 
+For LinqKit users, there is a new [feature](https://github.com/scottksmith95/LINQKit#more-optimized-queries) that makes it easy to use this tool with LinqKit. Then if you want to, you can convert any of your EF IQueryables to optimized ones just by stating `.AsExpandable()` before execution. Useful if you have a large database or complex queries with a network-lag between business logics and database.
 
 ## How can I test that it produced correct result?
 

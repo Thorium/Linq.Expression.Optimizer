@@ -1,3 +1,7 @@
+### 1.0.5 - 05/10/2016
+* Minor performance tweaks
+* Better C# LINQ optimization
+
 ### 1.0.4 - 30/08/2016
 * Minor tweaks to optimization
 
