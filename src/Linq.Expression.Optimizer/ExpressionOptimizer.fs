@@ -15,6 +15,15 @@ let internal ``replace constant comparison`` (e:Expression) =
         let (|Constant|_|) (e:Expression) = 
             match e.NodeType, e with 
             | ExpressionType.Constant, (:? ConstantExpression as ce) when (ce.Value :? IComparable) -> Some (ce.Value :?> IComparable)
+            | ExpressionType.Convert, (:? UnaryExpression as ue) ->
+                match ue.Operand.NodeType, ue.Operand with
+                | ExpressionType.Constant, (:? ConstantExpression as ce) when (ce.Value :? IComparable) -> 
+                    if ce.Value.GetType() = ue.Type then Some (ce.Value :?> IComparable)
+                    else
+                        let res = Expression.Lambda(ue).Compile().DynamicInvoke(null)
+                        if res :? IComparable then Some (res :?> IComparable)
+                        else None
+                | _ -> None
             | _ -> None
         let createbool b = Expression.Constant(b,  typeof<bool>) :> Expression
         match ce.Left, ce.Right with
@@ -288,6 +297,8 @@ and internal visitchilds (e:Expression): Expression =
 
     if e = null then null else
     match e with
+    | (:? ConstantExpression as e)    -> upcast e
+    | (:? ParameterExpression as e)   -> upcast e
     | (:? UnaryExpression as e) -> 
         let visited = visit e.Operand
         if visited=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visited,e.Type,e.Method) 
@@ -298,14 +309,6 @@ and internal visitchilds (e:Expression): Expression =
         else
             let v1, v2 = visit e.Left, visit e.Right
             if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(e.NodeType,v1,v2,e.IsLiftedToNull, e.Method)
-    | (:? TypeBinaryExpression as e)  -> 
-        let v = visit(e.Expression)
-        if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
-    | (:? ConditionalExpression as e) -> 
-        let v1, v2, v3 = visit e.Test, visit e.IfTrue, visit e.IfFalse
-        if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
-    | (:? ConstantExpression as e)    -> upcast e
-    | (:? ParameterExpression as e)   -> upcast e
     | (:? MemberExpression as e)      -> 
         let v = visit e.Expression
         if v=e.Expression then upcast e else upcast Expression.MakeMemberAccess(v, e.Member)
@@ -313,6 +316,12 @@ and internal visitchilds (e:Expression): Expression =
     | (:? LambdaExpression as e)      -> 
         let b = visit e.Body 
         if b=e.Body then upcast e else upcast Expression.Lambda(e.Type, b, e.Parameters)
+    | (:? TypeBinaryExpression as e)  -> 
+        let v = visit(e.Expression)
+        if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
+    | (:? ConditionalExpression as e) -> 
+        let v1, v2, v3 = visit e.Test, visit e.IfTrue, visit e.IfFalse
+        if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
     | (:? NewExpression as e) when e.Members = null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a))
     | (:? NewExpression as e) when e.Members <> null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a), e.Members)
     | (:? NewArrayExpression as e) when e.NodeType = ExpressionType.NewArrayBounds ->
