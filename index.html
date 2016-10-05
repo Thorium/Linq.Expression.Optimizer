@@ -42,15 +42,17 @@ This is meant to be used with expressions that are not compiled but transferred 
 <p>Example as a quote. There are various other cases also.</p>
 <ul>
 <li>Replace constants comparisons: <code>3 &lt; 4  -&gt;  true</code></li>
-<li>Remove anonymous types: <code>new AnonymousObject(Item1 = x, Item2 = "").Item1  --&gt;  x</code></li>
+<li>Remove anonymous types: <code>new AnonymousObject(Item1 = x, Item2 = "").Item1  -&gt;  x</code></li>
 <li>Cut not used condition: <code>if false then x else y  -&gt;  y</code></li>
 <li>Remove not: <code>not(false)  -&gt;  true</code></li>
+<li>Binary tree balancing: <code>a or (b or (c or (d or (e or (f or (g or h)))))) -&gt; ((a or b) or (c or d)) or ((e or f) or (g or h))</code></li>
+<li>Captured closure constant ("free variable") evaluation: <code>y = 3 and (y + x)  -&gt;  (3 + x)</code></li>
 <li>
 Boolean algebra reductions:
 <ul>
-<li>gather            <code>(x or y) and (x or z)   -&gt;  y or z</code></li>
-<li>identity          <code>(x=false) or y  -&gt;  y</code></li>
-<li>annihilate        <code>(x=false) and y  -&gt;  x</code></li>
+<li>gather            <code>(x or y) and (x or z)   -&gt; x or (y and z)</code></li>
+<li>identity          <code>false or y  -&gt;  y</code></li>
+<li>annihilate        <code>true or x  -&gt;  true</code></li>
 <li>absorb            <code>x and (x or y)  -&gt;  x</code></li>
 <li>idempotence       <code>y or y  -&gt;  y</code></li>
 <li>complement        <code>x and not(x)  -&gt;  false</code></li>
