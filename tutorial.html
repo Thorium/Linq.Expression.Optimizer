@@ -138,7 +138,7 @@
 <p>So still bad, but not so bad.</p>
 <h2><a name="Anonymous-object-replacement" class="anchor" href="#Anonymous-object-replacement">Anonymous object replacement</a></h2>
 <p>The way LINQ is constructed that methods like JOIN, WHERE, SELECT, GROUPBY, ... have all their own little lambda parameters.
-If you use other expression tree visitors like <a href="https://github.com/scottksmith95/LINQKit">LINQKit</a> these tools often merge
+If you use other expression tree visitors like <a href="https://github.com/scottksmith95/LINQKit">LinqKit</a> these tools often merge
 lambdas to another lambdas to get bigger expression trees. Usually this is not visible to the user. But the end result is:
 You endup in a situation where your SQL-query or whatever expression is massive.</p>
 <p>Let's see an example, with fairly simple LINQ-query:</p>
@@ -211,6 +211,7 @@ And this is (kind of) correct. Now this expression will be transferred to the ot
 _arg<span class="n">1</span> <span class="o">=</span><span class="o">&gt;</span> _arg<span class="n">1</span>.MyProperty<span class="n">2</span>
 </code></pre></td></tr></table>
 <p>...and if you compare this to the original LINQ, you can see that this is exactly what you want!</p>
+<p>For LinqKit users, there is a new <a href="https://github.com/scottksmith95/LINQKit#more-optimized-queries">feature</a> that makes it easy to use this tool with LinqKit. Then if you want to, you can convert any of your EF IQueryables to optimized ones just by stating <code>.AsExpandable()</code> before execution. Useful if you have a large database or complex queries with a network-lag between business logics and database.</p>
 <h2><a name="How-can-I-test-that-it-produced-correct-result" class="anchor" href="#How-can-I-test-that-it-produced-correct-result">How can I test that it produced correct result?</a></h2>
 <table class="pre"><tr><td class="lines"><pre class="fssnip"><span class="l"> 1: </span>
 <span class="l"> 2: </span>
