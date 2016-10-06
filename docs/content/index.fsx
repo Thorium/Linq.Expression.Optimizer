@@ -18,13 +18,15 @@ Supported optimizations
 Example as a quote. There are various other cases also.
 
 - Replace constants comparisons: ` 3 < 4  ->  true ` 
-- Remove anonymous types: ` new AnonymousObject(Item1 = x, Item2 = "").Item1  -->  x `
+- Remove anonymous types: ` new AnonymousObject(Item1 = x, Item2 = "").Item1  ->  x `
 - Cut not used condition: ` if false then x else y  ->  y `
 - Remove not: ` not(false)  ->  true `
+- Binary tree balancing: ` a or (b or (c or (d or (e or (f or (g or h)))))) -> ((a or b) or (c or d)) or ((e or f) or (g or h)) `
+- Captured closure constant ("free variable") evaluation: ` y = 3 and (y + x)  ->  (3 + x) `
 - Boolean algebra reductions:
-  * gather            `(x or y) and (x or z)   ->  y or z `  
-  * identity          ` (x=false) or y  ->  y `              
-  * annihilate        ` (x=false) and y  ->  x `             
+  * gather            ` (x or y) and (x or z)   -> x or (y and z) `  
+  * identity          ` false or y  ->  y `              
+  * annihilate        ` true or x  ->  true `             
   * absorb            ` x and (x or y)  ->  x `              
   * idempotence       ` y or y  ->  y `                      
   * complement        ` x and not(x)  ->  false `            
