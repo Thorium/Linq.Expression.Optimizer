@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0-*",
+  "version": "1.0.6-*",
   "title": "Linq.Expression.Optimizer",
   "description": "Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For side-effect free Expressions. No compilation-subjective optimizations.",
   "authors": [ "Tuomas Hietanen" ],
@@ -10,15 +10,12 @@
 	"xmlDoc": true,
 	"keyFile": "../Linq.Expression.Optimizer/Linq.Expression.Optimizer.snk",
     "compile": {
-      "includeFiles": [
-		"../Linq.Expression.Optimizer/AssemblyInfo.fs",
-        "../Linq.Expression.Optimizer/ExpressionOptimizer.fs"
-      ]
-    }
-  },
-  "dependencies": {
-    "Microsoft.FSharp.Core.netcore": "1.0.0-alpha-160509",
-	"System.Linq.Expressions": "4.1.0"
+        "includeFiles": [
+            "../Linq.Expression.Optimizer/AssemblyInfo.fs",
+            "../Linq.Expression.Optimizer/ExpressionOptimizer.fs"
+        ]
+    },
+    "define": [ "netcore" ]
   },
   "tools": {
     "dotnet-compile-fsc": {
@@ -32,11 +29,15 @@
   },
   "frameworks": {
     "netcoreapp1.0": {
+      "define": [ "netcore" ],
       "dependencies": {
         "Microsoft.NETCore.App": {
           "type": "platform",
           "version": "1.0.0"
-        }
+        },
+		"System.Reflection.TypeExtensions": "4.1.0",
+		"Microsoft.FSharp.Core.netcore": "1.0.0-alpha-160509",
+		"System.Linq.Expressions": "4.1.0"
       },
       "imports": [
         "portable-net45+win8",

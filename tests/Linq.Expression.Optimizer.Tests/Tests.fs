@@ -150,6 +150,16 @@ type ``Test Fixture`` () =
                 (x<0 || x<1 || x<2 || x<3 || x<4 || x<0 || x<1 || x<2 || x<3 || x<4))
         }
 
+    let qry14 (arr:int list) =
+        let aq = arr.AsQueryable()
+        query{
+            for x in arr.AsQueryable() do
+            where (arr = arr)
+            where (aq = aq.Reverse().Reverse().AsQueryable())
+            where (arr = [1; 2; 3])
+            select (not(not(not(x>3))) && true)
+        }
+
     let testEq (xs:int[]) qry = 
         let res = xs |> Seq.toList |> qry |> testExpression
         res ||> should equal 
@@ -238,3 +248,7 @@ type ``Test Fixture`` () =
     [<Property>]
     member test.``Expression optimizer generates smaller expression13`` (xs:int[]) = testLt xs qry13
 
+    [<Property>]
+    member test.``Expression optimizer generates equal results14`` (xs:int[]) = testEq xs qry14
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression14`` (xs:int[]) = testLt xs qry14

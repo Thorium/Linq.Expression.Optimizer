@@ -6,14 +6,23 @@ open System.Linq.Expressions
 open System
 open System.Reflection
 
+/// We want to eliminate enum-types and constants like 1 or "a".
+/// But Constant value can be also another complex object like IQueryable.
+/// We don't want to evaluate those!
 let internal ``constant basic type`` (parentExpr:Expression) (e:Expression) =
     match e.NodeType, e with
-    | ExpressionType.Constant, (:? ConstantExpression as ce) when (ce.Value :? IComparable) -> 
-        if ce.Value.GetType() = parentExpr.Type then Some (ce.Value :?> IComparable)
-        else
-            let res = Expression.Lambda(parentExpr).Compile().DynamicInvoke(null)
-            if res :? IComparable then Some (res :?> IComparable)
-            else None
+    | ExpressionType.Constant, (:? ConstantExpression as ce) 
+#if netcore
+        when parentExpr.Type.GetTypeInfo().IsPrimitive -> 
+#else
+        when parentExpr.Type.IsPrimitive -> 
+#endif
+            let getCorrectType (x:obj) = 
+                if (x :? IComparable) && x.GetType() = parentExpr.Type then Some (x :?> IComparable)
+                else None
+            match getCorrectType ce.Value with
+            | None -> Expression.Lambda(parentExpr).Compile().DynamicInvoke(null) |> getCorrectType
+            | x -> x
     | _ -> None
     
 
@@ -318,7 +327,7 @@ and internal visitchilds (e:Expression): Expression =
         let args = e.Arguments |> Seq.toArray 
         let visited = args |> Array.map(fun a -> visit' a)
         if e.Object = obje && args = visited then upcast e else
-        upcast Expression.Call(obje, e.Method, args)
+        upcast Expression.Call(obje, e.Method, visited)
     | (:? LambdaExpression as e)      -> 
         let b = visit' e.Body 
         if b=e.Body then upcast e else upcast Expression.Lambda(e.Type, b, e.Parameters)
