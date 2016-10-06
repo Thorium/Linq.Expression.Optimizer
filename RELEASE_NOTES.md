@@ -1,3 +1,6 @@
+### 1.0.6 - 06/10/2016
+* Improved compatibility with C# LINQ projects.
+
 ### 1.0.5 - 05/10/2016
 * Minor performance tweaks
 * Better C# LINQ optimization

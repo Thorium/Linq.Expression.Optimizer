@@ -6,6 +6,17 @@ open System.Linq.Expressions
 open System
 open System.Reflection
 
+let internal ``constant basic type`` (parentExpr:Expression) (e:Expression) =
+    match e.NodeType, e with
+    | ExpressionType.Constant, (:? ConstantExpression as ce) when (ce.Value :? IComparable) -> 
+        if ce.Value.GetType() = parentExpr.Type then Some (ce.Value :?> IComparable)
+        else
+            let res = Expression.Lambda(parentExpr).Compile().DynamicInvoke(null)
+            if res :? IComparable then Some (res :?> IComparable)
+            else None
+    | _ -> None
+    
+
 /// Purpose of this is optimize away already known constant=constant style expressions.
 ///   7 > 8      -->   False
 /// "G" = "G"    -->   True
@@ -15,15 +26,7 @@ let internal ``replace constant comparison`` (e:Expression) =
         let (|Constant|_|) (e:Expression) = 
             match e.NodeType, e with 
             | ExpressionType.Constant, (:? ConstantExpression as ce) when (ce.Value :? IComparable) -> Some (ce.Value :?> IComparable)
-            | ExpressionType.Convert, (:? UnaryExpression as ue) ->
-                match ue.Operand.NodeType, ue.Operand with
-                | ExpressionType.Constant, (:? ConstantExpression as ce) when (ce.Value :? IComparable) -> 
-                    if ce.Value.GetType() = ue.Type then Some (ce.Value :?> IComparable)
-                    else
-                        let res = Expression.Lambda(ue).Compile().DynamicInvoke(null)
-                        if res :? IComparable then Some (res :?> IComparable)
-                        else None
-                | _ -> None
+            | ExpressionType.Convert, (:? UnaryExpression as ue) -> ``constant basic type`` ue ue.Operand
             | _ -> None
         let createbool b = Expression.Constant(b,  typeof<bool>) :> Expression
         match ce.Left, ce.Right with
@@ -252,10 +255,8 @@ let internal ``evaluate constants`` (e:Expression) =
     match e.NodeType, e with
     | ExpressionType.MemberAccess, ( :? MemberExpression as me) 
         when me <> null && me.Expression<>null -> 
-            match me.Expression with
-            | :? ConstantExpression ->
-                 //Constant expression. Can be evaluated.
-                 Expression.Constant(Expression.Lambda(me).Compile().DynamicInvoke(null), me.Type) :> Expression
+            match ``constant basic type`` me me.Expression with
+            | Some x -> Expression.Constant(x, me.Type) :> Expression
             | _ -> e
     | ExpressionType.MemberAccess, ( :? MemberExpression as me) 
         when me <> null && me.Expression=null && 
@@ -282,11 +283,11 @@ let rec doReduction (exp:Expression) =
 
 // ------------------------------------- //
 
-/// Expression tree visitor: go through the whole expression tree.
+// Expression tree visitor: go through the whole expression tree.
 
-// .NET has already this System.Linq.Expressions.ExpressionVisitor
+// .NET has already this System.Linq.Expressions.Expressionvisitor
 // Too bad this was so simple and faster than what it would have taken to get to know that 700 rows of source code!
-let rec visit (exp:Expression): Expression =
+let rec internal visit' (exp:Expression): Expression =
     //bottom up:
     if exp = null then null else
     let e1 = visitchilds exp
@@ -300,34 +301,43 @@ and internal visitchilds (e:Expression): Expression =
     | (:? ConstantExpression as e)    -> upcast e
     | (:? ParameterExpression as e)   -> upcast e
     | (:? UnaryExpression as e) -> 
-        let visited = visit e.Operand
-        if visited=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visited,e.Type,e.Method) 
+        let visit'ed = visit' e.Operand
+        if visit'ed=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visit'ed,e.Type,e.Method) 
     | (:? BinaryExpression as e)      -> 
         if e.NodeType = ExpressionType.Coalesce && e.Conversion <> null then
-            let v1, v2, v3 = visit e.Left, visit e.Right, visit e.Conversion
+            let v1, v2, v3 = visit' e.Left, visit' e.Right, visit' e.Conversion
             if v1=e.Left && v2=e.Right && v3=(e.Conversion:>Expression) then upcast e else upcast Expression.Coalesce(v1, v2, v3 :?> LambdaExpression)
         else
-            let v1, v2 = visit e.Left, visit e.Right
+            let v1, v2 = visit' e.Left, visit' e.Right
             if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(e.NodeType,v1,v2,e.IsLiftedToNull, e.Method)
     | (:? MemberExpression as e)      -> 
-        let v = visit e.Expression
+        let v = visit' e.Expression
         if v=e.Expression then upcast e else upcast Expression.MakeMemberAccess(v, e.Member)
-    | (:? MethodCallExpression as e)  -> upcast Expression.Call(visit e.Object, e.Method, e.Arguments |> Seq.map(fun a -> visit a))
+    | (:? MethodCallExpression as e)  -> 
+        let obje = visit' e.Object
+        let args = e.Arguments |> Seq.toArray 
+        let visited = args |> Array.map(fun a -> visit' a)
+        if e.Object = obje && args = visited then upcast e else
+        upcast Expression.Call(obje, e.Method, args)
     | (:? LambdaExpression as e)      -> 
-        let b = visit e.Body 
+        let b = visit' e.Body 
         if b=e.Body then upcast e else upcast Expression.Lambda(e.Type, b, e.Parameters)
     | (:? TypeBinaryExpression as e)  -> 
-        let v = visit(e.Expression)
+        let v = visit'(e.Expression)
         if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
     | (:? ConditionalExpression as e) -> 
-        let v1, v2, v3 = visit e.Test, visit e.IfTrue, visit e.IfFalse
+        let v1, v2, v3 = visit' e.Test, visit' e.IfTrue, visit' e.IfFalse
         if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
-    | (:? NewExpression as e) when e.Members = null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a))
-    | (:? NewExpression as e) when e.Members <> null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit a), e.Members)
+    | (:? NewExpression as e) when e.Members = null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit' a))
+    | (:? NewExpression as e) when e.Members <> null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit' a), e.Members)
     | (:? NewArrayExpression as e) when e.NodeType = ExpressionType.NewArrayBounds ->
-                                         upcast Expression.NewArrayBounds(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit e))
-    | (:? NewArrayExpression as e)    -> upcast Expression.NewArrayInit(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit e))
-    | (:? InvocationExpression as e)  -> upcast Expression.Invoke(visit e.Expression, e.Arguments |> Seq.map(fun a -> visit a))
-    | (:? MemberInitExpression as e)  -> upcast Expression.MemberInit( (visit e.NewExpression) :?> NewExpression , e.Bindings) //probably shoud visit also bindings
-    | (:? ListInitExpression as e)    -> upcast Expression.ListInit( (visit e.NewExpression) :?> NewExpression, e.Initializers) //probably shoud visit also initialixers
+                                         upcast Expression.NewArrayBounds(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit' e))
+    | (:? NewArrayExpression as e)    -> upcast Expression.NewArrayInit(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit' e))
+    | (:? InvocationExpression as e)  -> upcast Expression.Invoke(visit' e.Expression, e.Arguments |> Seq.map(fun a -> visit' a))
+    | (:? MemberInitExpression as e)  -> upcast Expression.MemberInit( (visit' e.NewExpression) :?> NewExpression , e.Bindings) //probably shoud visit' also bindings
+    | (:? ListInitExpression as e)    -> upcast Expression.ListInit( (visit' e.NewExpression) :?> NewExpression, e.Initializers) //probably shoud visit' also initialixers
     | _ -> failwith ("encountered unknown LINQ expression: " + e.NodeType.ToString() + " " + e.ToString())
+
+/// Expression tree visit'or: go through the whole expression tree.
+let visit exp =
+    visit' exp

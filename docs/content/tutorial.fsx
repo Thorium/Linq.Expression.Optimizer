@@ -131,7 +131,7 @@ _arg1 => _arg1.MyProperty2
 
 ...and if you compare this to the original LINQ, you can see that this is exactly what you want!
 
-For LinqKit users, there is a new [feature](https://github.com/scottksmith95/LINQKit#more-optimized-queries) that makes it easy to use this tool with LinqKit. Then if you want to, you can convert any of your EF IQueryables to optimized ones just by stating `.AsExpandable()` before execution. Useful if you have a large database or complex queries with a network-lag between business logics and database.
+For LinqKit users, there is a new [feature](https://github.com/scottksmith95/LINQKit#more-optimized-queries) that makes it easy to use this tool with LinqKit. Then if you want to, you can convert any of your EF IQueryables to optimized ones just by stating `.AsExpandable()` before your LINQ-logics. Useful if you have a large database or complex queries with a network-lag between business logics and database.
 
 ## How can I test that it produced correct result?
 
