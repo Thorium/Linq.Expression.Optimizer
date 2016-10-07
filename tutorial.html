@@ -65,7 +65,7 @@
 <span class="k">open</span> <span onmouseout="hideTip(event, 'fs1', 2)" onmouseover="showTip(event, 'fs1', 2)" class="i">System</span><span class="o">.</span><span onmouseout="hideTip(event, 'fs2', 3)" onmouseover="showTip(event, 'fs2', 3)" class="i">Linq</span>
 
 <span class="c">// e.g. Database IQueryable:</span>
-<span class="k">let</span> <span onmouseout="hideTip(event, 'fs3', 4)" onmouseover="showTip(event, 'fs3', 4)" class="i">xs</span> <span class="o">=</span> [<span class="n">1</span>;<span class="n">2</span>;<span class="n">3</span>;<span class="n">4</span>;<span class="n">5</span>;<span class="n">6</span>]<span class="o">.</span><span class="f">AsQueryable</span>()
+<span class="k">let</span> <span onmouseout="hideTip(event, 'fs3', 4)" onmouseover="showTip(event, 'fs3', 4)" class="i">xs</span> <span class="o">=</span> [<span class="n">1</span>;<span class="n">2</span>;<span class="n">3</span>;<span class="n">4</span>;<span class="n">5</span>;<span class="n">6</span>]<span class="o">.</span><span class="i">AsQueryable</span>()
 <span class="k">let</span> <span onmouseout="hideTip(event, 'fs4', 5)" onmouseover="showTip(event, 'fs4', 5)" class="i">v</span> <span class="o">=</span> <span class="k">true</span>
 
 <span class="c">// Let&#39;s take some random horrible example:</span>
@@ -247,20 +247,20 @@ _arg<span class="n">1</span> <span class="o">=</span><span class="o">&gt;</span>
 
 <div class="tip" id="fs1">namespace System</div>
 <div class="tip" id="fs2">namespace System.Linq</div>
-<div class="tip" id="fs3">val xs : IQueryable&lt;int&gt;<br /><br />Full name: Tutorial.xs</div>
+<div class="tip" id="fs3">val xs : Linq.IQueryable&lt;int&gt;<br /><br />Full name: Tutorial.xs</div>
 <div class="tip" id="fs4">val v : bool<br /><br />Full name: Tutorial.v</div>
-<div class="tip" id="fs5">val qry : IQueryable&lt;bool&gt;<br /><br />Full name: Tutorial.qry</div>
+<div class="tip" id="fs5">val qry : Linq.IQueryable&lt;bool&gt;<br /><br />Full name: Tutorial.qry</div>
 <div class="tip" id="fs6">val query : Linq.QueryBuilder<br /><br />Full name: Microsoft.FSharp.Core.ExtraTopLevelOperators.query</div>
 <div class="tip" id="fs7">val x : int</div>
 <div class="tip" id="fs8">val y : int</div>
 <div class="tip" id="fs9">custom operation: where (bool)<br /><br />Calls Linq.QueryBuilder.Where </div>
 <div class="tip" id="fs10">val not : value:bool -&gt; bool<br /><br />Full name: Microsoft.FSharp.Core.Operators.not</div>
 <div class="tip" id="fs11">custom operation: select (&#39;Result)<br /><br />Calls Linq.QueryBuilder.Select </div>
-<div class="tip" id="fs12">val optimized : Expressions.Expression<br /><br />Full name: Tutorial.optimized</div>
+<div class="tip" id="fs12">val optimized : Linq.Expressions.Expression<br /><br />Full name: Tutorial.optimized</div>
 <div class="tip" id="fs13">module ExpressionOptimizer</div>
-<div class="tip" id="fs14">val visit : exp:Expressions.Expression -&gt; Expressions.Expression<br /><br />Full name: ExpressionOptimizer.visit</div>
-<div class="tip" id="fs15">property IQueryable.Expression: Expressions.Expression</div>
-<div class="tip" id="fs16">val qry : IQueryable&lt;obj&gt;<br /><br />Full name: Tutorial.qry</div>
+<div class="tip" id="fs14">val visit : exp:Linq.Expressions.Expression -&gt; Linq.Expressions.Expression<br /><br />Full name: ExpressionOptimizer.visit</div>
+<div class="tip" id="fs15">property Linq.IQueryable.Expression: Linq.Expressions.Expression</div>
+<div class="tip" id="fs16">val qry : Linq.IQueryable&lt;obj&gt;<br /><br />Full name: Tutorial.qry</div>
 <div class="tip" id="fs17">val a : obj</div>
 <div class="tip" id="fs18">val b : obj</div>
 <div class="tip" id="fs19">namespace System.Collections</div>
@@ -279,7 +279,7 @@ _arg<span class="n">1</span> <span class="o">=</span><span class="o">&gt;</span>
 <div class="tip" id="fs32">module Seq<br /><br />from Microsoft.FSharp.Collections</div>
 <div class="tip" id="fs33">val toList : source:seq&lt;&#39;T&gt; -&gt; &#39;T list<br /><br />Full name: Microsoft.FSharp.Collections.Seq.toList</div>
 <div class="tip" id="fs34">val test1 : bool list<br /><br />Full name: Tutorial.test1</div>
-<div class="tip" id="fs35">property IQueryable.Expression: Expression</div>
+<div class="tip" id="fs35">property Linq.IQueryable.Expression: Expression</div>
 <div class="tip" id="fs36">val ensureCorrectness : bool list<br /><br />Full name: Tutorial.ensureCorrectness</div>
 <div class="tip" id="fs37">val optimized : Expression<br /><br />Full name: Tutorial.optimized</div>
 

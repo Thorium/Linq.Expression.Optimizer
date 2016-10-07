@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8"/>
+    <title>Methods - Linq.Expression.Optimizer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta name="description" content=""/>
+    <meta name="author" content="Tuomas Hietanen"/>
+
+    <script src="https://code.jquery.com/jquery-1.8.0.js"></script>
+    <script src="https://code.jquery.com/ui/1.8.23/jquery-ui.js"></script>
+    <script src="https://netdna.bootstrapcdn.com/twitter-bootstrap/2.2.1/js/bootstrap.min.js"></script>
+    <link href="https://netdna.bootstrapcdn.com/twitter-bootstrap/2.2.1/css/bootstrap-combined.min.css" rel="stylesheet"/>
+
+    <link type="text/css" rel="stylesheet" href="/Linq.Expression.Optimizer/content/style.css" />
+    <script type="text/javascript" src="/Linq.Expression.Optimizer/content/tips.js"></script>
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="container">
+      <div class="masthead">
+        <ul class="nav nav-pills pull-right">
+          <li><a href="http://fsharp.org">fsharp.org</a></li>
+          <li><a href="https://github.com/Thorium/Linq.Expression.Optimizer">github page</a></li>
+        </ul>
+        <h3 class="muted"><a href="/Linq.Expression.Optimizer/index.html">Linq.Expression.Optimizer</a></h3>
+      </div>
+      <hr />
+      <div class="row">
+        <div class="span9" id="main">
+          
+
+
+
+<h1>Methods</h1>
+<p>
+  <span>Namespace: global</span><br />
+  <span>Parent Module: <a href="global-expressionoptimizer.html">ExpressionOptimizer</a></span>
+</p>
+<div class="xmldoc">
+</div>
+
+<!-- Render nested types and modules, if there are any -->
+
+  <h3>Functions and values</h3>
+  <table class="table table-bordered member-list">
+    <thead>
+      <tr><td>Function or value</td><td>Description</td></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '5', 5)" onmouseover="showTip(event, '5', 5)">
+            ( cut not used condition ) e
+          </code>
+          <div class="tip" id="5">
+            <strong>Signature:</strong> e:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L109-109" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          <p>if false then x else y -&gt; y</p>
+
+
+              <p>CompiledName: <code>cut not used condition</code></p>
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '6', 6)" onmouseover="showTip(event, '6', 6)">
+            ( evaluate constants ) e
+          </code>
+          <div class="tip" id="6">
+            <strong>Signature:</strong> e:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L267-267" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          <p>Evaluating constants to not mess with our expressions:</p>
+
+
+              <p>CompiledName: <code>evaluate constants</code></p>
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '7', 7)" onmouseover="showTip(event, '7', 7)">
+            ( not false is true ) e
+          </code>
+          <div class="tip" id="7">
+            <strong>Signature:</strong> e:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L119-119" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          <p>not(false) -&gt; true</p>
+
+
+              <p>CompiledName: <code>not false is true</code></p>
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '8', 8)" onmouseover="showTip(event, '8', 8)">
+            ( remove AnonymousType ) e
+          </code>
+          <div class="tip" id="8">
+            <strong>Signature:</strong> e:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L63-63" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          <p>Purpose of this is to replace non-used anonymous types:
+new AnonymousObject(Item1 = x, Item2 = "").Item1    --&gt;   x</p>
+
+
+              <p>CompiledName: <code>remove AnonymousType</code></p>
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '9', 9)" onmouseover="showTip(event, '9', 9)">
+            ( replace constant comparison ) e
+          </code>
+          <div class="tip" id="9">
+            <strong>Signature:</strong> e:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L38-38" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          <p>Purpose of this is optimize away already known constant=constant style expressions.
+7 &gt; 8      --&gt;   False
+"G" = "G"    --&gt;   True</p>
+
+
+              <p>CompiledName: <code>replace constant comparison</code></p>
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '10', 10)" onmouseover="showTip(event, '10', 10)">
+            absorb _arg1
+          </code>
+          <div class="tip" id="10">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L220-220" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '11', 11)" onmouseover="showTip(event, '11', 11)">
+            annihilate _arg1
+          </code>
+          <div class="tip" id="11">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L213-213" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '12', 12)" onmouseover="showTip(event, '12', 12)">
+            associate _arg1
+          </code>
+          <div class="tip" id="12">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L181-181" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          <p>Not in use, would cause looping...</p>
+
+
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '13', 13)" onmouseover="showTip(event, '13', 13)">
+            balancetree _arg1
+          </code>
+          <div class="tip" id="13">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L256-256" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          <p>Balance tree that is too much weighted to other side.
+The real advantage is not-so-nested-stack</p>
+
+
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '14', 14)" onmouseover="showTip(event, '14', 14)">
+            commute _arg1
+          </code>
+          <div class="tip" id="14">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L189-189" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '15', 15)" onmouseover="showTip(event, '15', 15)">
+            complement _arg1
+          </code>
+          <div class="tip" id="15">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L236-236" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '16', 16)" onmouseover="showTip(event, '16', 16)">
+            deMorgan _arg1
+          </code>
+          <div class="tip" id="16">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L247-247" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '17', 17)" onmouseover="showTip(event, '17', 17)">
+            distribute _arg1
+          </code>
+          <div class="tip" id="17">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L195-195" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          <p>Not in use, would cause looping...</p>
+
+
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '18', 18)" onmouseover="showTip(event, '18', 18)">
+            doubleNegation _arg1
+          </code>
+          <div class="tip" id="18">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L243-243" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '19', 19)" onmouseover="showTip(event, '19', 19)">
+            gather _arg1
+          </code>
+          <div class="tip" id="19">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L200-200" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '20', 20)" onmouseover="showTip(event, '20', 20)">
+            idempotence _arg1
+          </code>
+          <div class="tip" id="20">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L231-231" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          
+        </td>
+      </tr>
+      <tr>
+        <td class="member-name">
+
+          <code onmouseout="hideTip(event, '21', 21)" onmouseover="showTip(event, '21', 21)">
+            identity _arg1
+          </code>
+          <div class="tip" id="21">
+            <strong>Signature:</strong> _arg1:Expression -&gt; Expression<br />
+                      </div>
+        </td>
+        <td class="xmldoc">
+            <a href="https://github.com/Thorium/Linq.Expression.Optimizer/tree/master/src/Code/ExpressionOptimizer.fs#L205-205" class="github-link">
+              <img src="../content/img/github.png" class="normal" />
+              <img src="../content/img/github-blue.png" class="hover" />
+            </a>
+          
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+        </div>
+        <div class="span3">
+          <img src="/Linq.Expression.Optimizer/img/logo.png" alt="F# Project" style="width:150px;margin:10px" />  
+          <ul class="nav nav-list" id="menu" style="margin-top: 20px;">
+            <li class="nav-header">Linq.Expression.Optimizer</li>
+            <li><a href="/Linq.Expression.Optimizer/index.html">Home page</a></li>
+            <li class="divider"></li>
+            <li><a href="http://nuget.org/packages/Linq.Expression.Optimizer">Get Library via NuGet</a></li>
+            <li><a href="https://github.com/Thorium/Linq.Expression.Optimizer">Source Code on GitHub</a></li>
+            <li><a href="/Linq.Expression.Optimizer/license.html">License</a></li>
+            <li><a href="/Linq.Expression.Optimizer/release-notes.html">Release Notes</a></li>
+            
+            <li class="nav-header">Getting started</li>
+            <li><a href="/Linq.Expression.Optimizer/tutorial.html">Sample tutorial</a></li>
+
+            <li class="nav-header">Documentation</li>
+            <li><a href="/Linq.Expression.Optimizer/reference/index.html">API Reference</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <a href="https://github.com/Thorium/Linq.Expression.Optimizer"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_gray_6d6d6d.png" alt="Fork me on GitHub"/></a>
+  </body>
+  </html>
