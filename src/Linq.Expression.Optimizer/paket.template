@@ -28,4 +28,5 @@ files
     ../../bin/Linq.Expression.Optimizer/Linq.Expression.Optimizer.xml ==> lib/net45
     ../../bin/Linq.Expression.Optimizer.net35/Linq.Expression.Optimizer.dll ==> lib/net35
     ../../bin/Linq.Expression.Optimizer.net35/Linq.Expression.Optimizer.xml ==> lib/net35
-    ../../src/Linq.Expression.Optimizer.netcore/bin/Release/netcoreapp1.0/*.* ==> lib/netcoreapp1.0
+    ../../src/Linq.Expression.Optimizer.netcore/bin/Release/netstandard1.6/*.* ==> lib/netstandard1.6
+    ../../src/Linq.Expression.Optimizer.netcoreApp/bin/Release/netcoreapp1.0/*.* ==> lib/netcoreapp1.0

@@ -13,8 +13,8 @@
     <TargetFSharpCoreVersion>4.3.0.0</TargetFSharpCoreVersion>
     <Name>Linq.Expression.Optimizer.net35</Name>
     <TargetFrameworkProfile />
-	<SignAssembly>true</SignAssembly>
-	<AssemblyOriginatorKeyFile>..\Linq.Expression.Optimizer\Linq.Expression.Optimizer.snk</AssemblyOriginatorKeyFile>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>..\Linq.Expression.Optimizer\Linq.Expression.Optimizer.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -22,7 +22,7 @@
     <Optimize>false</Optimize>
     <Tailcalls>false</Tailcalls>
     <OutputPath>.\bin\Debug</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DefineConstants>TRACE;DEBUG;NET35</DefineConstants>
     <WarningLevel>3</WarningLevel>
     <DocumentationFile>.\bin\$(Configuration)\$(AssemblyName).xml</DocumentationFile>
     <OtherFlags>--warnon:1182</OtherFlags>
@@ -32,7 +32,7 @@
     <Optimize>true</Optimize>
     <Tailcalls>true</Tailcalls>
     <OutputPath>.\bin\Release</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
+    <DefineConstants>TRACE;NET35</DefineConstants>
     <WarningLevel>3</WarningLevel>
     <DocumentationFile>.\bin\$(Configuration)\$(AssemblyName).xml</DocumentationFile>
     <OtherFlags>--warnon:1182</OtherFlags>
@@ -64,11 +64,14 @@
   <ItemGroup>
     <None Include="paket.references" />
     <Content Include="App.config" />
-    <Compile Include="..\Linq.Expression.Optimizer\ExpressionOptimizer.fs">
+    <Compile Include="..\Code\ExpressionOptimizer.fs">
       <Link>ExpressionOptimizer.fs</Link>
     </Compile>
-    <Compile Include="..\Linq.Expression.Optimizer\AssemblyInfo.fs">
+    <Compile Include="..\Code\AssemblyInfo.fs">
       <Link>AssemblyInfo.fs</Link>
+    </Compile>
+    <Compile Include="..\Code\Api.fs">
+      <Link>Api.fs</Link>
     </Compile>
   </ItemGroup>
   <ItemGroup>

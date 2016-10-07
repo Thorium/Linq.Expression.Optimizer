@@ -373,7 +373,7 @@ Target "All" DoNothing
   ==> "GenerateDocs"
 #if MONO
 #else
-//  =?> ("SourceLink", Pdbstr.tryFind().IsSome )
+  =?> ("SourceLink", Pdbstr.tryFind().IsSome )
 #endif
   ==> "NuGet"
   ==> "BuildPackage"

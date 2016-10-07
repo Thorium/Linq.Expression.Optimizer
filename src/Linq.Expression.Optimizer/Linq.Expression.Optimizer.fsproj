@@ -13,8 +13,8 @@
     <TargetFSharpCoreVersion>4.3.0.0</TargetFSharpCoreVersion>
     <Name>Linq.Expression.Optimizer</Name>
     <TargetFrameworkProfile />
-	<SignAssembly>true</SignAssembly>
-	<AssemblyOriginatorKeyFile>Linq.Expression.Optimizer.snk</AssemblyOriginatorKeyFile>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>Linq.Expression.Optimizer.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -32,7 +32,7 @@
     <Optimize>true</Optimize>
     <Tailcalls>true</Tailcalls>
     <OutputPath>.\bin\Release</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
+    <DefineConstants>TRACE;NET45</DefineConstants>
     <WarningLevel>3</WarningLevel>
     <DocumentationFile>.\bin\$(Configuration)\$(AssemblyName).xml</DocumentationFile>
     <OtherFlags>--warnon:1182</OtherFlags>
@@ -66,7 +66,15 @@
     <None Include="paket.references" />
     <None Include="paket.template" />
     <Content Include="App.config" />
-    <Compile Include="ExpressionOptimizer.fs" />
+    <Compile Include="..\Code\ExpressionOptimizer.fs">
+      <Link>ExpressionOptimizer.fs</Link>
+    </Compile>
+    <Compile Include="..\Code\AssemblyInfo.fs">
+      <Link>AssemblyInfo.fs</Link>
+    </Compile>
+    <Compile Include="..\Code\Api.fs">
+      <Link>Api.fs</Link>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.Core, Version=4.4.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">

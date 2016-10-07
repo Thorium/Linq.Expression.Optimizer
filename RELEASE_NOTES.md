@@ -1,3 +1,7 @@
+### 1.0.7 - 07/10/2016
+* C# Api
+* netstandard 1.6 support
+
 ### 1.0.6 - 06/10/2016
 * Improved compatibility with C# LINQ projects.
 
