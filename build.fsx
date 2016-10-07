@@ -125,6 +125,8 @@ Target "CleanDocs" (fun _ ->
 // Build library & test project
 
 Target "Build" (fun _ ->
+    let scriptPath = "." </> "src" </> "Linq.Expression.Optimizer.netcore" </> "_build_nuget.cmd"
+    shellExec {defaultParams with Program=scriptPath; CommandLine="" } |> ignore
     !! solutionFile
 #if MONO
     |> MSBuildReleaseExt "" [ ("DefineConstants","MONO") ] "Rebuild"
