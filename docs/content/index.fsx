@@ -133,8 +133,8 @@ The API reference is automatically generated from Markdown comments in the libra
 Testimonials
 --------------------------
 
-This component is in a large scale enterprise application for simplifying and streamlining 
-key financial processes. There is a huge data processing-pipeline with thousands of 
+This component is in use in a large scale enterprise application for simplifying and 
+streamlining key financial processes. There is a huge data processing-pipeline with thousands of 
 different SQL-clauses (some also very complex) against separate Oracle server cluster. 
 The pipeline used pure EntityFramework and was converted to use LinqKit with Linq.Expression.Optimizer. 
 The process was performance tested multiple times, and the execution time was dropped 
