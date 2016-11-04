@@ -128,6 +128,18 @@ The API reference is automatically generated from Markdown comments in the libra
  * [API Reference](reference/index.html) contains automatically generated documentation for all types, modules
    and functions in the library. This includes additional brief samples on using most of the
    functions.
+
+   
+Testimonials
+--------------------------
+
+This component is in a large scale enterprise application for simplifying and streamlining 
+key financial processes. There is a huge data processing-pipeline with thousands of 
+different SQL-clauses (some also very complex) against separate Oracle server cluster. 
+The pipeline used pure EntityFramework and was converted to use LinqKit with Linq.Expression.Optimizer. 
+The process was performance tested multiple times, and the execution time was dropped 
+from 15h 30min to 14h 30min, mainly due to delivering less CPU usage to Oracle servers.
+ 
  
 Contributing and copyright
 --------------------------
