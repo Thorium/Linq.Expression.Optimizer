@@ -280,10 +280,105 @@ module Methods =
                         Expression.Constant(Expression.Lambda(me).Compile().DynamicInvoke(null), me.Type) :> Expression
                 | _ -> e
         | _ -> e
+
+    // ------------------------------------- //
+    /// Evaluate simple math between two constants.
+    ///  9  *  3     -->    27
+    /// "G" + "G"    -->   "GG"
+    let  ``evaluate basic constant math`` (e:Expression) =
+        match e with
+        | (:? BinaryExpression as ce) -> 
+            if ce.Left.Type <> ce.Right.Type then e
+            else
+            match ce.Left.NodeType, ce.Right.NodeType, ce.Left, ce.Right with
+            | ExpressionType.Constant, ExpressionType.Constant, (:? ConstantExpression as le), (:? ConstantExpression as ri) ->
+                // F# doesn't support macros so this code is a bit copy-and-paste, but it should be trivial. 
+                match e.NodeType with
+                | ExpressionType.Add ->
+                    match le.Value, ri.Value with
+                    | (:? string  as lstr), (:? string  as rstr) when le.Type = typeof<string>  -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? decimal as lstr), (:? decimal as rstr) when le.Type = typeof<decimal> -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? float32 as lstr), (:? float32 as rstr) when le.Type = typeof<float32> -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? double  as lstr), (:? double  as rstr) when le.Type = typeof<double>  -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? float   as lstr), (:? float   as rstr) when le.Type = typeof<float>   -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? Int32   as lstr), (:? Int32   as rstr) when le.Type = typeof<Int32>   -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? Int64   as lstr), (:? Int64   as rstr) when le.Type = typeof<Int64>   -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when le.Type = typeof<UInt32>  -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when le.Type = typeof<UInt64>  -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? Int16   as lstr), (:? Int16   as rstr) when le.Type = typeof<Int16>   -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when le.Type = typeof<UInt16>  -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? int8    as lstr), (:? int8    as rstr) when le.Type = typeof<int8>    -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? uint8   as lstr), (:? uint8   as rstr) when le.Type = typeof<uint8>   -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | _ -> e
+                | ExpressionType.Subtract -> 
+                    match le.Value, ri.Value with
+                    | (:? decimal as lstr), (:? decimal as rstr) when le.Type = typeof<decimal> -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? float32 as lstr), (:? float32 as rstr) when le.Type = typeof<float32> -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? double  as lstr), (:? double  as rstr) when le.Type = typeof<double>  -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? float   as lstr), (:? float   as rstr) when le.Type = typeof<float>   -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? Int32   as lstr), (:? Int32   as rstr) when le.Type = typeof<Int32>   -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? Int64   as lstr), (:? Int64   as rstr) when le.Type = typeof<Int64>   -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when le.Type = typeof<UInt32>  -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when le.Type = typeof<UInt64>  -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? Int16   as lstr), (:? Int16   as rstr) when le.Type = typeof<Int16>   -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when le.Type = typeof<UInt16>  -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? int8    as lstr), (:? int8    as rstr) when le.Type = typeof<int8>    -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? uint8   as lstr), (:? uint8   as rstr) when le.Type = typeof<uint8>   -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | _ -> e
+                | ExpressionType.Multiply -> 
+                    match le.Value, ri.Value with
+                    | (:? decimal as lstr), (:? decimal as rstr) when le.Type = typeof<decimal> -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? float32 as lstr), (:? float32 as rstr) when le.Type = typeof<float32> -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? double  as lstr), (:? double  as rstr) when le.Type = typeof<double>  -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? float   as lstr), (:? float   as rstr) when le.Type = typeof<float>   -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? Int32   as lstr), (:? Int32   as rstr) when le.Type = typeof<Int32>   -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? Int64   as lstr), (:? Int64   as rstr) when le.Type = typeof<Int64>   -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when le.Type = typeof<UInt32>  -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when le.Type = typeof<UInt64>  -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? Int16   as lstr), (:? Int16   as rstr) when le.Type = typeof<Int16>   -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when le.Type = typeof<UInt16>  -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? int8    as lstr), (:? int8    as rstr) when le.Type = typeof<int8>    -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? uint8   as lstr), (:? uint8   as rstr) when le.Type = typeof<uint8>   -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | _ -> e
+                | ExpressionType.Divide -> 
+                    match le.Value, ri.Value with
+                    | (:? decimal as lstr), (:? decimal as rstr) when le.Type = typeof<decimal> -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? float32 as lstr), (:? float32 as rstr) when le.Type = typeof<float32> -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? double  as lstr), (:? double  as rstr) when le.Type = typeof<double>  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? float   as lstr), (:? float   as rstr) when le.Type = typeof<float>   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? Int32   as lstr), (:? Int32   as rstr) when le.Type = typeof<Int32>   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? Int64   as lstr), (:? Int64   as rstr) when le.Type = typeof<Int64>   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when le.Type = typeof<UInt32>  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when le.Type = typeof<UInt64>  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? Int16   as lstr), (:? Int16   as rstr) when le.Type = typeof<Int16>   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when le.Type = typeof<UInt16>  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? int8    as lstr), (:? int8    as rstr) when le.Type = typeof<int8>    -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? uint8   as lstr), (:? uint8   as rstr) when le.Type = typeof<uint8>   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | _ -> e
+                | ExpressionType.Modulo -> 
+                    match le.Value, ri.Value with
+                    | (:? decimal as lstr), (:? decimal as rstr) when le.Type = typeof<decimal> -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? float32 as lstr), (:? float32 as rstr) when le.Type = typeof<float32> -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? double  as lstr), (:? double  as rstr) when le.Type = typeof<double>  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? float   as lstr), (:? float   as rstr) when le.Type = typeof<float>   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? Int32   as lstr), (:? Int32   as rstr) when le.Type = typeof<Int32>   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? Int64   as lstr), (:? Int64   as rstr) when le.Type = typeof<Int64>   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when le.Type = typeof<UInt32>  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when le.Type = typeof<UInt64>  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? Int16   as lstr), (:? Int16   as rstr) when le.Type = typeof<Int16>   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when le.Type = typeof<UInt16>  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? int8    as lstr), (:? int8    as rstr) when le.Type = typeof<int8>    -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? uint8   as lstr), (:? uint8   as rstr) when le.Type = typeof<uint8>   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | _ -> e
+                | _ -> e
+            | _ -> e
+        | _ -> e
+
+
 // ------------------------------------- //
 /// Used optimization methods
 let mutable reductionMethods = [
-     Methods.``evaluate constants``;
+     Methods.``evaluate constants``;  Methods.``evaluate basic constant math``
      Methods.``replace constant comparison``; Methods.``remove AnonymousType``; 
      Methods.``cut not used condition``; Methods.``not false is true``;
      (*Methods.associate;*) Methods.commute; (*Methods.distribute;*) Methods.gather; Methods.identity; 

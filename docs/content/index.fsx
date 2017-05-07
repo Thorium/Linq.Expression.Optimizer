@@ -23,6 +23,7 @@ Example as a quote. There are various other cases also.
 - Remove not: ` not(false)  ->  true `
 - Binary tree balancing: ` a or (b or (c or (d or (e or (f or (g or h)))))) -> ((a or b) or (c or d)) or ((e or f) or (g or h)) `
 - Captured closure constant ("free variable") evaluation: ` y = 3 and (y + x)  ->  (3 + x) `
+- Execute simple math: `5 * 3  ->  15` 
 - Boolean algebra reductions:
   * gather            ` (x or y) and (x or z)   -> x or (y and z) `  
   * identity          ` false or y  ->  y `              
