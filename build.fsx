@@ -125,8 +125,17 @@ Target "CleanDocs" (fun _ ->
 // Build library & test project
 
 Target "Build" (fun _ ->
-    let scriptPath = "." </> "src" </> "Linq.Expression.Optimizer.netcore" </> "_build_nuget.cmd"
-    shellExec {defaultParams with Program=scriptPath; CommandLine="" } |> ignore
+    let coreProject = "." </> "src" </> "Linq.Expression.Optimizer.standard" </> "Linq.Expression.Optimizer.standard.fsproj"
+    DotNetCli.Restore(fun p -> 
+        { p with 
+            Project = coreProject
+            NoCache = true})
+
+    DotNetCli.Build(fun p -> 
+        { p with 
+            Project = coreProject
+            Configuration = "Release"})
+
     !! solutionFile
 #if MONO
     |> MSBuildReleaseExt "" [ ("DefineConstants","MONO") ] "Rebuild"
@@ -155,6 +164,7 @@ Target "SourceLink" (fun _ ->
     let baseUrl = sprintf "%s/%s/{0}/%%var2%%" gitRaw project
     !! "src/**/*.??proj"
     -- "src/**/*.shproj"
+    //-- "src/Linq.Expression.Optimizer.standard/Linq.Expression.Optimizer.standard.fsproj" //.NET Core not supporting source-links.
     |> Seq.iter (fun projFile ->
         let proj = VsProj.LoadRelease projFile
         SourceLink.Index proj.CompilesNotLinked proj.OutputFilePdb __SOURCE_DIRECTORY__ baseUrl
@@ -375,7 +385,7 @@ Target "All" DoNothing
   ==> "GenerateDocs"
 #if MONO
 #else
-  =?> ("SourceLink", Pdbstr.tryFind().IsSome )
+  //=?> ("SourceLink", Pdbstr.tryFind().IsSome ) //Fails, so disabled for now.
 #endif
   ==> "NuGet"
   ==> "BuildPackage"

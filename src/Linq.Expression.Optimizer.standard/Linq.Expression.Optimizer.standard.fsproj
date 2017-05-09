@@ -1,0 +1,34 @@
+<Project Sdk="FSharp.NET.Sdk;Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard1.6</TargetFramework>
+    <TargetFramework>netcoreapp1.1</TargetFramework>
+    <PackageId>Linq.Expression.Optimizer</PackageId>
+    <Authors>Tuomas Hietanen</Authors>
+    <Product>Linq.Expression.Optimizer</Product>
+    <Description>Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For side-effect free Expressions. No compilation-subjective optimizations.</Description>
+    <Copyright>The Unlicense</Copyright>
+    <PackageLicenseUrl>https://github.com/thorium/Linq.Expression.Optimizer/blob/master/LICENSE.txt</PackageLicenseUrl>
+    <RepositoryUrl>https://github.com/thorium/Linq.Expression.Optimizer/</RepositoryUrl>
+    <PackageProjectUrl>https://thorium.github.io/Linq.Expression.Optimizer/</PackageProjectUrl>
+    <PackageIconUrl>https://thorium.github.io/Linq.Expression.Optimizer/img/logo.png</PackageIconUrl>
+    <PackageTags>LINQ Expression Expressions Expression tree expressiontree expression-tree IQueryable System.Linq.Expressions optimise optimize compile boolean algebra deMorgan reduction optimizer optimiser tree</PackageTags>
+    <SignAssembly>True</SignAssembly>
+    <AssemblyOriginatorKeyFile>../Linq.Expression.Optimizer/Linq.Expression.Optimizer.snk</AssemblyOriginatorKeyFile>
+    <DelaySign>False</DelaySign>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DocumentationFile>bin\Debug\netcoreapp1.1\Linq.Expression.Optimizer.standard.xml</DocumentationFile>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DocumentationFile>bin\Release\netcoreapp1.1\Linq.Expression.Optimizer.standard.xml</DocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Code/ExpressionOptimizer.fs" />
+    <Compile Include="../Code/Api.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FSharp.Core" Version="4.1.*" />
+    <PackageReference Include="FSharp.NET.Sdk" Version="1.0.*" PrivateAssets="All" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>
