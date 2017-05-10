@@ -47,6 +47,7 @@ This is meant to be used with expressions that are not compiled but transferred 
 <li>Remove not: <code>not(false)  -&gt;  true</code></li>
 <li>Binary tree balancing: <code>a or (b or (c or (d or (e or (f or (g or h)))))) -&gt; ((a or b) or (c or d)) or ((e or f) or (g or h))</code></li>
 <li>Captured closure constant ("free variable") evaluation: <code>y = 3 and (y + x)  -&gt;  (3 + x)</code></li>
+<li>Execute simple math: <code>5 * 3  -&gt;  15</code></li>
 <li>
 Boolean algebra reductions:
 <ul>
@@ -159,18 +160,18 @@ Boolean algebra reductions:
 <span class="inactive">#r</span><span class="inactive"> </span><span class="inactive">&quot;Linq.Expression.Optimizer.dll&quot;</span>
 <span class="prep">#endif</span>
 
-<span class="k">open</span> <span onmouseout="hideTip(event, 'fs1', 1)" onmouseover="showTip(event, 'fs1', 1)" class="i">System</span><span class="o">.</span><span onmouseout="hideTip(event, 'fs2', 2)" onmouseover="showTip(event, 'fs2', 2)" class="i">Linq</span>
+<span class="k">open</span> <span class="i">System</span><span class="o">.</span><span class="i">Linq</span>
 
 <span class="c">// e.g. Database IQueryable:</span>
-<span class="k">let</span> <span onmouseout="hideTip(event, 'fs3', 3)" onmouseover="showTip(event, 'fs3', 3)" class="i">xs</span> <span class="o">=</span> [<span class="n">1</span>;<span class="n">2</span>;<span class="n">3</span>;<span class="n">4</span>;<span class="n">5</span>]<span class="o">.</span><span class="i">AsQueryable</span>()
+<span class="k">let</span> <span class="i">xs</span> <span class="o">=</span> [<span class="n">1</span>;<span class="n">2</span>;<span class="n">3</span>;<span class="n">4</span>;<span class="n">5</span>]<span class="o">.</span><span class="i">AsQueryable</span>()
 
-<span class="k">let</span> <span onmouseout="hideTip(event, 'fs4', 4)" onmouseover="showTip(event, 'fs4', 4)" class="i">qry</span> <span class="o">=</span>
-    <span onmouseout="hideTip(event, 'fs5', 5)" onmouseover="showTip(event, 'fs5', 5)" class="i">query</span>{
-        <span class="k">for</span> <span onmouseout="hideTip(event, 'fs6', 6)" onmouseover="showTip(event, 'fs6', 6)" class="i">x</span> <span class="k">in</span> <span onmouseout="hideTip(event, 'fs3', 7)" onmouseover="showTip(event, 'fs3', 7)" class="i">xs</span> <span class="k">do</span>
-        <span onmouseout="hideTip(event, 'fs7', 8)" onmouseover="showTip(event, 'fs7', 8)" class="k">select</span> (<span onmouseout="hideTip(event, 'fs8', 9)" onmouseover="showTip(event, 'fs8', 9)" class="f">not</span>(<span onmouseout="hideTip(event, 'fs8', 10)" onmouseover="showTip(event, 'fs8', 10)" class="f">not</span>(<span onmouseout="hideTip(event, 'fs8', 11)" onmouseover="showTip(event, 'fs8', 11)" class="f">not</span>(<span onmouseout="hideTip(event, 'fs6', 12)" onmouseover="showTip(event, 'fs6', 12)" class="i">x</span><span class="o">&gt;</span><span class="n">3</span>))) <span class="o">&amp;&amp;</span> <span class="k">true</span>)
+<span class="k">let</span> <span class="i">qry</span> <span class="o">=</span>
+    <span class="i">query</span>{
+        <span class="k">for</span> <span class="i">x</span> <span class="k">in</span> <span class="i">xs</span> <span class="k">do</span>
+        <span class="i">select</span> (<span class="i">not</span>(<span class="i">not</span>(<span class="i">not</span>(<span class="i">x</span><span class="o">&gt;</span><span class="n">3</span>))) <span class="o">&amp;&amp;</span> <span class="k">true</span>)
     }
     
-<span class="k">let</span> <span onmouseout="hideTip(event, 'fs9', 13)" onmouseover="showTip(event, 'fs9', 13)" class="i">optimized</span> <span class="o">=</span> <span onmouseout="hideTip(event, 'fs10', 14)" onmouseover="showTip(event, 'fs10', 14)" class="t">ExpressionOptimizer</span><span class="o">.</span><span onmouseout="hideTip(event, 'fs11', 15)" onmouseover="showTip(event, 'fs11', 15)" class="f">visit</span>(<span onmouseout="hideTip(event, 'fs4', 16)" onmouseover="showTip(event, 'fs4', 16)" class="i">qry</span><span class="o">.</span><span onmouseout="hideTip(event, 'fs12', 17)" onmouseover="showTip(event, 'fs12', 17)" class="i">Expression</span>)
+<span class="k">let</span> <span class="i">optimized</span> <span class="o">=</span> <span class="i">ExpressionOptimizer</span><span class="o">.</span><span class="i">visit</span>(<span class="i">qry</span><span class="o">.</span><span class="i">Expression</span>)
 </code></pre></td>
 </tr>
 </table>
@@ -203,18 +204,6 @@ also want to read the <a href="https://github.com/thorium/Linq.Expression.Optimi
 redistribution for both commercial and non-commercial purposes. For more information see the
 <a href="https://github.com/thorium/Linq.Expression.Optimizer/blob/master/LICENSE.txt">License file</a> in the GitHub repository.</p>
 
-<div class="tip" id="fs1">namespace System</div>
-<div class="tip" id="fs2">namespace System.Linq</div>
-<div class="tip" id="fs3">val xs : System.Linq.IQueryable&lt;int&gt;<br /><br />Full name: Index.xs</div>
-<div class="tip" id="fs4">val qry : System.Linq.IQueryable&lt;bool&gt;<br /><br />Full name: Index.qry</div>
-<div class="tip" id="fs5">val query : Linq.QueryBuilder<br /><br />Full name: Microsoft.FSharp.Core.ExtraTopLevelOperators.query</div>
-<div class="tip" id="fs6">val x : int</div>
-<div class="tip" id="fs7">custom operation: select (&#39;Result)<br /><br />Calls Linq.QueryBuilder.Select </div>
-<div class="tip" id="fs8">val not : value:bool -&gt; bool<br /><br />Full name: Microsoft.FSharp.Core.Operators.not</div>
-<div class="tip" id="fs9">val optimized : System.Linq.Expressions.Expression<br /><br />Full name: Index.optimized</div>
-<div class="tip" id="fs10">module ExpressionOptimizer</div>
-<div class="tip" id="fs11">val visit : exp:System.Linq.Expressions.Expression -&gt; System.Linq.Expressions.Expression<br /><br />Full name: ExpressionOptimizer.visit</div>
-<div class="tip" id="fs12">property System.Linq.IQueryable.Expression: System.Linq.Expressions.Expression</div>
 
         </div>
         <div class="span3">
