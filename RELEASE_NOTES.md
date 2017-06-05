@@ -1,3 +1,6 @@
+### 1.0.9 - 05/06/2017
+* Changed netcoreapp1.1 to netstandard1.6
+
 ### 1.0.8 - 10/05/2017
 * One more optimization: Simple constant math evaluation
 

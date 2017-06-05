@@ -124,8 +124,8 @@ Target "CleanDocs" (fun _ ->
 // --------------------------------------------------------------------------------------
 // Build library & test project
 
+let coreProject = "." </> "src" </> "Linq.Expression.Optimizer.standard" </> "Linq.Expression.Optimizer.standard.fsproj"
 Target "Build" (fun _ ->
-    let coreProject = "." </> "src" </> "Linq.Expression.Optimizer.standard" </> "Linq.Expression.Optimizer.standard.fsproj"
     DotNetCli.Restore(fun p -> 
         { p with 
             Project = coreProject
@@ -177,6 +177,12 @@ Target "SourceLink" (fun _ ->
 // Build a NuGet package
 
 Target "NuGet" (fun _ ->
+    DotNetCli.Pack(fun p -> 
+        { p with 
+            Project = coreProject
+            Configuration = "Release"})
+
+
     Paket.Pack(fun p ->
         { p with
             OutputPath = "bin"
