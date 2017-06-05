@@ -8,7 +8,7 @@ Just basic boolean algebra and reductions, constant and tuple/anonymous type eli
 For side-effect free Expressions. No compilation-subjective optimizations. 
 This is meant to be used with expressions that are not compiled but transferred to other domain.
 
-Supported frameworks: Net 3.5, Net 4.5-..., .NET Standard 1.6 (so also .NET Core)
+Supported frameworks: Net 3.5, Net 4.5-... (and Mono), .NET Standard 1.6 (so also .NET Core)
 
 ## Supported optimizations
 
