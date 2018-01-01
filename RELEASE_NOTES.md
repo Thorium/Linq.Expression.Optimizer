@@ -1,3 +1,8 @@
+### 1.0.10 - 01/01/2018
+* Updated FSharp from 4.2 to 4.2.3
+* Renamed netstandard1.6 dll to be consistent with others
+* Updated to build with .NET Standard 2 SDK
+
 ### 1.0.9 - 05/06/2017
 * Changed netcoreapp1.1 to netstandard1.6
 

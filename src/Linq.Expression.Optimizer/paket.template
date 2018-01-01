@@ -28,6 +28,6 @@ files
     ../../bin/Linq.Expression.Optimizer/Linq.Expression.Optimizer.xml ==> lib/net45
     ../../bin/Linq.Expression.Optimizer.net35/Linq.Expression.Optimizer.dll ==> lib/net35
     ../../bin/Linq.Expression.Optimizer.net35/Linq.Expression.Optimizer.xml ==> lib/net35
-    ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard1.6/Linq.Expression.Optimizer.standard.deps.json ==> lib/netstandard1.6
-    ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard1.6/Linq.Expression.Optimizer.standard.dll ==> lib/netstandard1.6
-    ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard1.6/Linq.Expression.Optimizer.standard.xml ==> lib/netstandard1.6	
+    ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard1.6/Linq.Expression.Optimizer.deps.json ==> lib/netstandard1.6
+    ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard1.6/Linq.Expression.Optimizer.dll ==> lib/netstandard1.6
+    ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard1.6/Linq.Expression.Optimizer.xml ==> lib/netstandard1.6	
