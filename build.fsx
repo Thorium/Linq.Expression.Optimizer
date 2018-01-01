@@ -191,6 +191,14 @@ Target "NuGet" (fun _ ->
 )
 
 Target "PublishNuget" (fun _ ->
+
+    let notUsedPackage1 = "Linq.Expression.Optimizer.standard" </> "bin" </> "Release" </> "Linq.Expression.Optimizer.1.0.0.nupkg"
+    let notUsedPackage2 = "Linq.Expression.Optimizer.standard" </> "bin" </> "Release" </> "Linq.Expression.Optimizer.1.0.0.nupkg"
+    if System.IO.File.Exists notUsedPackage1 then
+        DeleteFile notUsedPackage1
+    if System.IO.File.Exists notUsedPackage2 then
+        DeleteFile notUsedPackage2
+
     Paket.Push(fun p ->
         { p with
             WorkingDir = "bin" })

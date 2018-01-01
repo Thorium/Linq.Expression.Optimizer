@@ -19,12 +19,7 @@
     <SignAssembly>True</SignAssembly>
     <AssemblyOriginatorKeyFile>../Linq.Expression.Optimizer/Linq.Expression.Optimizer.snk</AssemblyOriginatorKeyFile>
     <DelaySign>False</DelaySign>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <DocumentationFile>bin\Debug\netcoreapp1.1\Linq.Expression.Optimizer.xml</DocumentationFile>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <DocumentationFile>bin\Release\netcoreapp1.1\Linq.Expression.Optimizer.xml</DocumentationFile>
+    <DocumentationFile>bin\netstandard1.6\Linq.Expression.Optimizer.xml</DocumentationFile>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Code/ExpressionOptimizer.fs" />
