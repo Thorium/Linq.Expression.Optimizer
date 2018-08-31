@@ -1,6 +1,6 @@
 source https://nuget.org/api/v2
 
-nuget FSharp.Core 4.2.3 redirects: force
+nuget FSharp.Core 4.5.2 redirects: force
 nuget FSharp.NET.Sdk
 
 group Build

@@ -26,6 +26,7 @@ module Methods =
                 let getCorrectType (x:obj) = 
                     if (x :? IComparable) && x.GetType() = parentExpr.Type then Some (x :?> IComparable)
                     else None
+                if ce.Value = null then None else
                 match getCorrectType ce.Value with
                 | None -> Expression.Lambda(parentExpr).Compile().DynamicInvoke(null) |> getCorrectType
                 | x -> x
@@ -373,7 +374,6 @@ module Methods =
                 | _ -> e
             | _ -> e
         | _ -> e
-
 
 // ------------------------------------- //
 /// Used optimization methods

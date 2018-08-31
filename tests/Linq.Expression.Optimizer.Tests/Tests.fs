@@ -160,6 +160,16 @@ type ``Test Fixture`` () =
             select (not(not(not(x>3))) && true)
         }
 
+    let qry15 (arr:int list) =
+        let y : int Option = Option.None
+        let xx = box(Nullable<int>())
+        query{
+            for x in arr.AsQueryable() do
+            where ((not ((xx :?> Nullable<int>).HasValue) || 
+                    (xx :?> Nullable<int>).Value > 2) && (y.IsNone || (y.Value > x)) && true)
+            select (1)
+        }
+
     let testEq (xs:int[]) qry = 
         let res = xs |> Seq.toList |> qry |> testExpression
         res ||> should equal 
@@ -252,3 +262,8 @@ type ``Test Fixture`` () =
     member test.``Expression optimizer generates equal results14`` (xs:int[]) = testEq xs qry14
     [<Property>]
     member test.``Expression optimizer generates smaller expression14`` (xs:int[]) = testLt xs qry14
+
+    [<Property>]
+    member test.``Expression optimizer generates equal results15`` (xs:int[]) = testEq xs qry15
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression15`` (xs:int[]) = testLt xs qry15
