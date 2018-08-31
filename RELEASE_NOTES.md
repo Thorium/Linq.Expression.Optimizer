@@ -1,3 +1,7 @@
+### 1.0.12 - 31/08/2018
+* Reference updates
+* Null-value handling on ``replace constant comparison``, #7
+
 ### 1.0.11 - 01/01/2018
 * Updated FSharp from 4.2 to 4.2.3
 * Renamed netstandard1.6 dll to be consistent with others
