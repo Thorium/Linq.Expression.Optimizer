@@ -26,6 +26,8 @@ open Microsoft.FSharp.Linq.RuntimeHelpers
 open NHamcrest.Core
 open Xunit.Extensions
 
+type Itm = {x:int}
+
 type ``Test Fixture`` () = 
     let executeExpression (e:Expression) =
         Expression.Lambda(e).Compile().DynamicInvoke() :?> System.Collections.IEnumerable |> Seq.cast |> Seq.toList
@@ -169,6 +171,19 @@ type ``Test Fixture`` () =
                     (xx :?> Nullable<int>).Value > 2) && (y.IsNone || (y.Value > x)) && true)
             select (1)
         }
+    
+    let qry16 (arr:int list) =
+        let toImts x = {x = x}
+        let asItms = arr |> List.map(toImts)
+        let arr2 = asItms.AsQueryable()
+        let onlyX = true
+        query{
+            for i in arr2 do
+            join j in arr2 on (i.x = j.x)
+            where (((not onlyX) ||
+                      (onlyX && i.x=3)) && arr2.Any(fun sl -> false || sl.x = j.x && j.x <> 1))
+            select (i.x, j.x)
+        }
 
     let testEq (xs:int[]) qry = 
         let res = xs |> Seq.toList |> qry |> testExpression
@@ -177,6 +192,8 @@ type ``Test Fixture`` () =
     let testLt (xs:int[]) qry = 
         let expr = xs |> Seq.toList |> qry |> (fun (q:IQueryable<'a>) -> q.Expression)
         let optimized = ExpressionOptimizer.visit(expr)
+        let o = optimized.ToString()
+        let o2 = o.ToString()
         should lessThan (expr.ToString().Length) (optimized.ToString().Length)
 
     let testLteq (xs:int[]) qry = 
@@ -267,3 +284,8 @@ type ``Test Fixture`` () =
     member test.``Expression optimizer generates equal results15`` (xs:int[]) = testEq xs qry15
     [<Property>]
     member test.``Expression optimizer generates smaller expression15`` (xs:int[]) = testLt xs qry15
+
+    [<Property>]
+    member test.``Expression optimizer generates equal results16`` (xs:int[]) = testEq xs qry16
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression16`` (xs:int[]) = testLteq xs qry16

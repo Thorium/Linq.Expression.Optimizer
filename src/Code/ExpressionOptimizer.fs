@@ -410,7 +410,9 @@ and internal visitchilds (e:Expression): Expression =
 
     if e = null then null else
     match e with
-    | (:? ConstantExpression as e)    -> upcast e
+    | (:? ConstantExpression as e)    -> 
+       let v = ``WhereSelectEnumerableIterator visitor`` e
+       upcast v
     | (:? ParameterExpression as e)   -> upcast e
     | (:? UnaryExpression as e) -> 
         let visit'ed = visit' e.Operand
@@ -449,6 +451,33 @@ and internal visitchilds (e:Expression): Expression =
     | (:? MemberInitExpression as e)  -> upcast Expression.MemberInit( (visit' e.NewExpression) :?> NewExpression , e.Bindings) //probably shoud visit' also bindings
     | (:? ListInitExpression as e)    -> upcast Expression.ListInit( (visit' e.NewExpression) :?> NewExpression, e.Initializers) //probably shoud visit' also initialixers
     | _ -> failwith ("encountered unknown LINQ expression: " + e.NodeType.ToString() + " " + e.ToString())
+
+// Look also inside a LINQ-wrapper
+// https://referencesource.microsoft.com/#System.Core/System/Linq/Enumerable.cs,8bf16962931637d3,references
+and internal ``WhereSelectEnumerableIterator visitor`` (ce:ConstantExpression) : ConstantExpression =
+    if ce.Value = null || ce.Type = null || (not (ce.Type.FullName.StartsWith "System.Linq")) then ce
+    else
+    let enuProp = ce.Type.GetProperty("Enumerable", System.Reflection.BindingFlags.NonPublic ||| System.Reflection.BindingFlags.Instance)
+    if enuProp = null then ce
+    else
+    let enu = enuProp.GetValue(ce.Value, null)
+    if enu = null then ce
+    else
+    let srcProp = enu.GetType().GetField("source", System.Reflection.BindingFlags.NonPublic ||| System.Reflection.BindingFlags.Instance)
+    if srcProp = null then ce
+    else 
+    let src = srcProp.GetValue enu
+    if src = null then ce
+    else
+    let exprItm = src.GetType().GetField("expression", System.Reflection.BindingFlags.NonPublic ||| System.Reflection.BindingFlags.Instance)
+    let expr = exprItm.GetValue src
+    if expr = null then ce
+    else
+    let exp = expr :?> Expression
+    let opt = visit' exp
+    if opt <> exp then
+        exprItm.SetValue(src, (box opt))
+    ce
 
 /// Expression tree visitor: go through the whole expression tree.
 let visit exp =
