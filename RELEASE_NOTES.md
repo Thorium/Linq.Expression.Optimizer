@@ -1,3 +1,6 @@
+### 1.0.13 - 27/05/2019
+* Look inside a WhereSelectEnumerableIterator, #9
+
 ### 1.0.12 - 31/08/2018
 * Reference updates
 * Null-value handling on ``replace constant comparison``, #7
