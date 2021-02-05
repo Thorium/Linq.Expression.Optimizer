@@ -1,3 +1,6 @@
+### 1.0.14 - 28/10/2020
+* FSharp core dependency update
+
 ### 1.0.13 - 27/05/2019
 * Look inside a WhereSelectEnumerableIterator, #9
 

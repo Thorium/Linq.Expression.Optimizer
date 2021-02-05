@@ -25,10 +25,11 @@ open System.Linq.Expressions
 open Microsoft.FSharp.Linq.RuntimeHelpers
 open NHamcrest.Core
 open Xunit.Extensions
+open BenchmarkDotNet.Attributes
 
 type Itm = {x:int}
 
-type ``Test Fixture`` () = 
+module Queries =
     let executeExpression (e:Expression) =
         Expression.Lambda(e).Compile().DynamicInvoke() :?> System.Collections.IEnumerable |> Seq.cast |> Seq.toList
 
@@ -201,7 +202,8 @@ type ``Test Fixture`` () =
         let optimized = ExpressionOptimizer.visit(expr)
         should lessThanOrEqualTo (expr.ToString().Length) (optimized.ToString().Length)
 
-
+open Queries
+type ``Test Fixture`` () = 
     [<Fact>]
     member test.``Expression optimizer generates equal results on 1-2-3-4-5 array`` () =
                     testEq [|1;2;3;4;5|] qry1
@@ -289,3 +291,54 @@ type ``Test Fixture`` () =
     member test.``Expression optimizer generates equal results16`` (xs:int[]) = testEq xs qry16
     [<Property>]
     member test.``Expression optimizer generates smaller expression16`` (xs:int[]) = testLteq xs qry16
+
+[<MemoryDiagnoser>]
+type Benchmark() =
+  let t = [1;2;3;4;5;6;7;8;9]
+  let queries = [|
+      (qry1 t).Expression;
+      (qry2 t).Expression; 
+      (qry3 t).Expression; 
+      (qry4 t).Expression; 
+      (qry5 t).Expression; 
+      (qry6 t).Expression; 
+      (qry7 t).Expression; 
+      (qry8 t).Expression; 
+      (qry9 t).Expression; 
+      (qry10 t).Expression; 
+      (qry11 t).Expression; 
+      (qry12 t).Expression; 
+      (qry13 t).Expression; 
+      (qry14 t).Expression; 
+      (qry15 t).Expression; 
+      (qry16 t).Expression |]
+  let visitAndExecute = ExpressionOptimizer.visit >> executeExpression
+
+  [<GlobalSetup>]
+  member this.Setup() =()
+
+  [<Benchmark(Baseline=true)>] 
+  member this.ExecuteDirect() = 
+    let x = queries |> Array.map executeExpression
+    ()
+  
+  [<Benchmark>] 
+  member this.ExecuteOpt1() = 
+    let x = queries |> Array.map visitAndExecute
+    ()
+
+module Starter = 
+    [<EntryPoint>]
+    let main argv =
+        let r = BenchmarkDotNet.Running.BenchmarkRunner.Run<Benchmark>()
+        printfn "%O" r
+        0
+
+// The main lag is the network transfer and SQL-execution.
+// But we don't want the optimization to take too much resourses.
+
+//|       Method |     Mean |    Error |   StdDev | Ratio | RatioSD |    Gen 0 |   Gen 1 | Gen 2 | Allocated |
+//|------------- |---------:|---------:|---------:|------:|--------:|---------:|--------:|------:|----------:|
+//| ExecutDirect | 16.13 ms | 0.318 ms | 0.340 ms |  1.00 |    0.00 |  93.7500 | 31.2500 |     - | 490.39 KB |
+//|  ExecuteOpt1 | 17.04 ms | 0.160 ms | 0.149 ms |  1.06 |    0.02 | 125.0000 | 62.5000 |     - | 606.01 KB |
+
