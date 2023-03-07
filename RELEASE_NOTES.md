@@ -1,3 +1,6 @@
+### 1.0.15 - 13/07/2021
+* Dependency updates
+
 ### 1.0.14 - 28/10/2020
 * FSharp core dependency update
 
