@@ -119,8 +119,9 @@ module Queries =
                     exists (x = -y) })
             select (x)
         }
-    let cond1 = 12
+    
     let qry11 (arr:int list) =
+        let cond1 = 12
         query{
             for x in arr.AsQueryable() do
             distinct
@@ -132,6 +133,7 @@ module Queries =
 
     let qry12 (arr:int list) =
         let f(v:int) = v
+        let cond1 = 12
         query{
             for x in arr.AsQueryable() do
             where (cond1 = 12)

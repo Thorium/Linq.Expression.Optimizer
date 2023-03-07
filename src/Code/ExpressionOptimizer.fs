@@ -450,7 +450,8 @@ and internal visitchilds (e:Expression): Expression =
     | (:? InvocationExpression as e)  -> upcast Expression.Invoke(visit' e.Expression, e.Arguments |> Seq.map(fun a -> visit' a))
     | (:? MemberInitExpression as e)  -> upcast Expression.MemberInit( (visit' e.NewExpression) :?> NewExpression , e.Bindings) //probably shoud visit' also bindings
     | (:? ListInitExpression as e)    -> upcast Expression.ListInit( (visit' e.NewExpression) :?> NewExpression, e.Initializers) //probably shoud visit' also initialixers
-    | _ -> failwith ("encountered unknown LINQ expression: " + e.NodeType.ToString() + " " + e.ToString())
+    | _ -> if (int e.NodeType = 52) then e // Expression.Extension
+           else failwith ("encountered unknown LINQ expression: " + e.NodeType.ToString() + " " + e.ToString())
 
 // Look also inside a LINQ-wrapper
 // https://referencesource.microsoft.com/#System.Core/System/Linq/Enumerable.cs,8bf16962931637d3,references
