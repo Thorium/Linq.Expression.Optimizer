@@ -1,5 +1,6 @@
-### 1.0.15 - 13/07/2021
+### 1.0.15 - 07/03/2023
 * Dependency updates
+* Fix for ExpressionType.Extension
 
 ### 1.0.14 - 28/10/2020
 * FSharp core dependency update
