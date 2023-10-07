@@ -26,7 +26,7 @@ module Methods =
                 let getCorrectType (x:obj) = 
                     if (x :? IComparable) && x.GetType() = parentExpr.Type then Some (x :?> IComparable)
                     else None
-                if ce.Value = null then None else
+                if isNull ce.Value then None else
                 match getCorrectType ce.Value with
                 | None -> Expression.Lambda(parentExpr).Compile().DynamicInvoke(null) |> getCorrectType
                 | x -> x
@@ -73,7 +73,7 @@ module Methods =
                         if ok then Some i else None
                     else None
                 match memberIndex, me.Expression.NodeType, me.Expression, me.Member with 
-                | Some idx, ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when ne <> null && p <> null -> 
+                | Some idx, ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when not(isNull ne || isNull p) -> 
                     if ne.Arguments.Count > idx - 1 && ne.Arguments.[idx-1].Type = p.PropertyType then 
                         ne.Arguments.[idx-1] // We found it!
                     else e
@@ -82,14 +82,14 @@ module Methods =
         | ExpressionType.MemberAccess, ( :? MemberExpression as me)
             when me.Member.DeclaringType.Name.ToUpper().StartsWith("<>F__ANONYMOUSTYPE") || me.Member.DeclaringType.Name.ToUpper().StartsWith("TUPLE") ->
                 match me.Expression.NodeType, me.Expression, me.Member with 
-                | ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when ne.Arguments <> null && p <> null -> 
+                | ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when not(isNull ne.Arguments || isNull p) -> 
                         let selected = ne.Arguments |> Seq.tryPick(function
-                            | :? MemberExpression as ame when ame.Member <> null && ame.Member.Name = me.Member.Name && ame.Type = p.PropertyType ->
+                            | :? MemberExpression as ame when (not(isNull ame.Member)) && ame.Member.Name = me.Member.Name && ame.Type = p.PropertyType ->
                                Some(ame :> Expression)
                             |_ -> None)
                         match selected with 
                         | Some x -> x 
-                        | None when ne.Members <> null -> 
+                        | None when not(isNull ne.Members) -> 
                             let selected = ne.Members |> Seq.tryPick(function
                                 | m when m.Name = me.Member.Name ->
                                     let idx = ne.Members.IndexOf(m)
@@ -152,13 +152,13 @@ module Methods =
 
     let internal (|True'|_|) expr =
         match expr with
-        | Value (o, t) when t = typeof<bool> && (o :?> bool) = true ->
+        | Value (o, t) when t = typeof<bool> && (o :?> bool) ->
             Some expr
         | _ -> None
 
     let internal (|False'|_|) expr =
         match expr with
-        | Value (o, t) when t = typeof<bool> && (o :?> bool) = false ->
+        | Value (o, t) when t = typeof<bool> && not (o :?> bool) ->
             Some expr
         | _ -> None
 
@@ -268,12 +268,12 @@ module Methods =
     let ``evaluate constants`` (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.MemberAccess, ( :? MemberExpression as me) 
-            when me <> null && me.Expression<>null -> 
+            when not(isNull me || isNull me.Expression) -> 
                 match ``constant basic type`` me me.Expression with
                 | Some x -> Expression.Constant(x, me.Type) :> Expression
                 | _ -> e
         | ExpressionType.MemberAccess, ( :? MemberExpression as me) 
-            when me <> null && me.Expression=null && 
+            when (not(isNull me)) && isNull me.Expression && 
                     (me.Member.DeclaringType.Name.ToUpper().StartsWith("FSI_") 
                      || me.Member.DeclaringType.Name.ToUpper().StartsWith("<>C__DISPLAYCLASS") ) -> 
                 match me.Member with 
@@ -401,14 +401,14 @@ let rec doReduction (exp:Expression) =
 // Too bad this was so simple and faster than what it would have taken to get to know that 700 rows of source code!
 let rec internal visit' (exp:Expression): Expression =
     //bottom up:
-    if exp = null then null else
+    if isNull exp then null else
     let e1 = visitchilds exp
     let e2 = doReduction e1
     e2
 
 and internal visitchilds (e:Expression): Expression =
 
-    if e = null then null else
+    if isNull e then null else
     match e with
     | (:? ConstantExpression as e)    -> 
        let v = ``WhereSelectEnumerableIterator visitor`` e
@@ -418,7 +418,7 @@ and internal visitchilds (e:Expression): Expression =
         let visit'ed = visit' e.Operand
         if visit'ed=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visit'ed,e.Type,e.Method) 
     | (:? BinaryExpression as e)      -> 
-        if e.NodeType = ExpressionType.Coalesce && e.Conversion <> null then
+        if e.NodeType = ExpressionType.Coalesce && not (isNull e.Conversion) then
             let v1, v2, v3 = visit' e.Left, visit' e.Right, visit' e.Conversion
             if v1=e.Left && v2=e.Right && v3=(e.Conversion:>Expression) then upcast e else upcast Expression.Coalesce(v1, v2, v3 :?> LambdaExpression)
         else
@@ -430,7 +430,7 @@ and internal visitchilds (e:Expression): Expression =
     | (:? MethodCallExpression as e)  -> 
         let obje = visit' e.Object
         let args = e.Arguments |> Seq.toArray 
-        let visited = args |> Array.map(fun a -> visit' a)
+        let visited = args |> Array.map visit'
         if e.Object = obje && args = visited then upcast e else
         upcast Expression.Call(obje, e.Method, visited)
     | (:? LambdaExpression as e)      -> 
@@ -442,12 +442,15 @@ and internal visitchilds (e:Expression): Expression =
     | (:? ConditionalExpression as e) -> 
         let v1, v2, v3 = visit' e.Test, visit' e.IfTrue, visit' e.IfFalse
         if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
-    | (:? NewExpression as e) when e.Members = null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit' a))
-    | (:? NewExpression as e) when e.Members <> null -> upcast Expression.New(e.Constructor, e.Arguments |> Seq.map(fun a -> visit' a), e.Members)
+    | (:? NewExpression as e) -> 
+        if isNull e.Members then
+            upcast Expression.New(e.Constructor, e.Arguments |> Seq.map visit')
+        else
+            upcast Expression.New(e.Constructor, (e.Arguments |> Seq.map visit'), e.Members)
     | (:? NewArrayExpression as e) when e.NodeType = ExpressionType.NewArrayBounds ->
-                                         upcast Expression.NewArrayBounds(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit' e))
-    | (:? NewArrayExpression as e)    -> upcast Expression.NewArrayInit(e.Type.GetElementType(), e.Expressions |> Seq.map(fun e -> visit' e))
-    | (:? InvocationExpression as e)  -> upcast Expression.Invoke(visit' e.Expression, e.Arguments |> Seq.map(fun a -> visit' a))
+                                         upcast Expression.NewArrayBounds(e.Type.GetElementType(), e.Expressions |> Seq.map visit')
+    | (:? NewArrayExpression as e)    -> upcast Expression.NewArrayInit(e.Type.GetElementType(), e.Expressions |> Seq.map visit')
+    | (:? InvocationExpression as e)  -> upcast Expression.Invoke(visit' e.Expression, e.Arguments |> Seq.map visit')
     | (:? MemberInitExpression as e)  -> upcast Expression.MemberInit( (visit' e.NewExpression) :?> NewExpression , e.Bindings) //probably shoud visit' also bindings
     | (:? ListInitExpression as e)    -> upcast Expression.ListInit( (visit' e.NewExpression) :?> NewExpression, e.Initializers) //probably shoud visit' also initialixers
     | _ -> if (int e.NodeType = 52) then e // Expression.Extension
@@ -456,23 +459,23 @@ and internal visitchilds (e:Expression): Expression =
 // Look also inside a LINQ-wrapper
 // https://referencesource.microsoft.com/#System.Core/System/Linq/Enumerable.cs,8bf16962931637d3,references
 and internal ``WhereSelectEnumerableIterator visitor`` (ce:ConstantExpression) : ConstantExpression =
-    if ce.Value = null || ce.Type = null || (not (ce.Type.FullName.StartsWith "System.Linq")) then ce
+    if isNull ce.Value || isNull ce.Type || (not (ce.Type.FullName.StartsWith "System.Linq")) then ce
     else
     let enuProp = ce.Type.GetProperty("Enumerable", System.Reflection.BindingFlags.NonPublic ||| System.Reflection.BindingFlags.Instance)
-    if enuProp = null then ce
+    if isNull enuProp then ce
     else
     let enu = enuProp.GetValue(ce.Value, null)
-    if enu = null then ce
+    if isNull enu then ce
     else
     let srcProp = enu.GetType().GetField("source", System.Reflection.BindingFlags.NonPublic ||| System.Reflection.BindingFlags.Instance)
-    if srcProp = null then ce
+    if isNull srcProp then ce
     else 
     let src = srcProp.GetValue enu
-    if src = null then ce
+    if isNull src then ce
     else
     let exprItm = src.GetType().GetField("expression", System.Reflection.BindingFlags.NonPublic ||| System.Reflection.BindingFlags.Instance)
     let expr = exprItm.GetValue src
-    if expr = null then ce
+    if isNull expr then ce
     else
     let exp = expr :?> Expression
     let opt = visit' exp
