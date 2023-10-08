@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!--<TargetFramework>netstandard1.6</TargetFramework>-->
-    <TargetFrameworks>netstandard1.6;netstandard2.0;netstandard2.1</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;netstandard2.1</TargetFrameworks>
     <!-- <TargetFramework>netcoreapp1.1</TargetFramework> -->
     <!-- <TargetFramework>net45</TargetFramework> -->
     <PackageId>Linq.Expression.Optimizer</PackageId>
