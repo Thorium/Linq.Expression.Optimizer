@@ -1,3 +1,8 @@
+### 1.0.16 - 08/10/2023
+* Minor performance optimisations
+* Relaxed F# dependency
+* Dropped support for old .NET 3.5
+
 ### 1.0.15 - 07/03/2023
 * Dependency updates
 * Fix for ExpressionType.Extension

@@ -1,6 +1,6 @@
 source https://nuget.org/api/v2
 
-nuget FSharp.Core 4.5.2 redirects: force
+nuget FSharp.Core 6.0.7 redirects: force
 nuget FSharp.NET.Sdk
 
 group Build
@@ -20,9 +20,3 @@ group Test
   nuget FsUnit.xUnit
   nuget xunit.runner.visualstudio >= 2.0 version_in_path: true
   nuget xunit.runner.console
-  
-group net35
-  source https://nuget.org/api/v2
-  framework <= 3.5
-  
-nuget FSharp.Core 4.1.18  

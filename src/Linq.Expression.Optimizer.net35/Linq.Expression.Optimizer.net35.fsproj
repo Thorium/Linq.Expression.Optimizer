@@ -83,15 +83,4 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
   </ItemGroup>
-  <Choose>
-    <When Condition="$(TargetFrameworkIdentifier) == '.NETFramework' And $(TargetFrameworkVersion) == 'v3.5'">
-      <ItemGroup>
-        <Reference Include="FSharp.Core">
-          <HintPath>..\..\packages\net35\FSharp.Core\lib\net20\FSharp.Core.dll</HintPath>
-          <Private>True</Private>
-          <Paket>True</Paket>
-        </Reference>
-      </ItemGroup>
-    </When>
-  </Choose>
 </Project>
