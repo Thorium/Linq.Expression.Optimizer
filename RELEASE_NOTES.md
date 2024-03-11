@@ -1,3 +1,6 @@
+### 1.0.17 - 11/03/2024
+* Support for basic math optimisation: ((x+2)+2)=x+4, #16
+
 ### 1.0.16 - 08/10/2023
 * Minor performance optimisations
 * Relaxed F# dependency

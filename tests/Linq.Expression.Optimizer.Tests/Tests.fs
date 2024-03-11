@@ -188,6 +188,15 @@ module Queries =
             select (i.x, j.x)
         }
 
+
+    let qry17 (arr:int list) =
+        let arr2 = arr |> List.map(fun x -> x,x,x)
+        query{
+            for (x,y,z) in arr2.AsQueryable() do
+            //      (x+10)                   +      y*6      +    (z - 2)      
+            select ( ((((x+2)+2)+2)+ (2+2))  +  ((y*2)*3)    +   ((z - 1) - 1))
+        }
+
     let testEq (xs:int[]) qry = 
         let res = xs |> Seq.toList |> qry |> testExpression
         res ||> should equal 
@@ -215,49 +224,49 @@ type ``Test Fixture`` () =
                     testLt [|1;2;3;4;5|] qry1
         
     [<Property>]
-    member test.``Expression optimizer generates equal results1`` (xs:int[]) = testEq xs qry1 
+    member test.``Expression optimizer generates equal results01`` (xs:int[]) = testEq xs qry1 
     [<Property>]
-    member test.``Expression optimizer generates smaller expression1`` (xs:int[]) = testLt xs qry1
+    member test.``Expression optimizer generates smaller expression01`` (xs:int[]) = testLt xs qry1
 
     [<Property>]
-    member test.``Expression optimizer generates equal results2`` (xs:int[]) = testEq xs qry2 
+    member test.``Expression optimizer generates equal results02`` (xs:int[]) = testEq xs qry2 
     [<Property>]
-    member test.``Expression optimizer generates smaller expression2`` (xs:int[]) = testLteq xs qry2
+    member test.``Expression optimizer generates smaller expression02`` (xs:int[]) = testLteq xs qry2
 
     [<Property>]
-    member test.``Expression optimizer generates equal results3`` (xs:int[]) = testEq xs qry3
+    member test.``Expression optimizer generates equal results03`` (xs:int[]) = testEq xs qry3
     [<Property>]
-    member test.``Expression optimizer generates smaller expression3`` (xs:int[]) = testLteq xs qry3
+    member test.``Expression optimizer generates smaller expression03`` (xs:int[]) = testLteq xs qry3
 
     [<Property>]
-    member test.``Expression optimizer generates equal results4`` (xs:int[]) = testEq xs qry4
+    member test.``Expression optimizer generates equal results04`` (xs:int[]) = testEq xs qry4
     [<Property>]
-    member test.``Expression optimizer generates smaller expression4`` (xs:int[]) = testLt xs qry4
+    member test.``Expression optimizer generates smaller expression04`` (xs:int[]) = testLt xs qry4
 
     [<Property>]
-    member test.``Expression optimizer generates equal results5`` () = testEq [|2;-2|] qry5
+    member test.``Expression optimizer generates equal results05`` () = testEq [|2;-2|] qry5
     [<Property>]
-    member test.``Expression optimizer generates smaller expression5`` (xs:int[]) = testLteq xs qry5
+    member test.``Expression optimizer generates smaller expression05`` (xs:int[]) = testLteq xs qry5
 
     [<Property>]
-    member test.``Expression optimizer generates equal results6`` (xs:int[]) = testEq xs qry6
+    member test.``Expression optimizer generates equal results06`` (xs:int[]) = testEq xs qry6
     [<Property>]
-    member test.``Expression optimizer generates smaller expression6`` (xs:int[]) = testLteq xs qry6
+    member test.``Expression optimizer generates smaller expression06`` (xs:int[]) = testLteq xs qry6
 
     [<Property>]
-    member test.``Expression optimizer generates equal results7`` (xs:int[]) = testEq xs qry7 
+    member test.``Expression optimizer generates equal results07`` (xs:int[]) = testEq xs qry7 
     [<Property>]
-    member test.``Expression optimizer generates smaller expression7`` (xs:int[]) = testLt xs qry7
+    member test.``Expression optimizer generates smaller expression07`` (xs:int[]) = testLt xs qry7
 
     [<Property>]
-    member test.``Expression optimizer generates equal results8`` (xs:int[]) = testEq xs qry8
+    member test.``Expression optimizer generates equal results08`` (xs:int[]) = testEq xs qry8
     [<Property>]
-    member test.``Expression optimizer generates smaller expression8`` (xs:int[]) = testLteq xs qry8
+    member test.``Expression optimizer generates smaller expression08`` (xs:int[]) = testLteq xs qry8
 
     [<Property>]
-    member test.``Expression optimizer generates equal results9`` (xs:int[]) = testEq xs qry9
+    member test.``Expression optimizer generates equal results09`` (xs:int[]) = testEq xs qry9
     [<Property>]
-    member test.``Expression optimizer generates smaller expression9`` (xs:int[]) = testLteq xs qry9
+    member test.``Expression optimizer generates smaller expression09`` (xs:int[]) = testLteq xs qry9
 
     [<Property>]
     member test.``Expression optimizer generates equal results10`` (xs:int[]) = testEq xs qry10
@@ -293,6 +302,12 @@ type ``Test Fixture`` () =
     member test.``Expression optimizer generates equal results16`` (xs:int[]) = testEq xs qry16
     [<Property>]
     member test.``Expression optimizer generates smaller expression16`` (xs:int[]) = testLteq xs qry16
+
+    [<Property>]
+    member test.``Expression optimizer generates equal results17`` (xs:int[]) = testEq xs qry17
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression17`` (xs:int[]) = testLteq xs qry17
+
 
 [<MemoryDiagnoser>]
 type Benchmark() =
