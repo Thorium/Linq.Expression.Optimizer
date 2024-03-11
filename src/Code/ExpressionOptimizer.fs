@@ -376,8 +376,10 @@ module Methods =
                 match inner.Left.NodeType, inner.Right.NodeType, inner.Left, inner.Right with
                 // Strings only work on right-side:  x + "a" + "c" = x + "ac"
                 | _, ExpressionType.Constant, _, (:? ConstantExpression as irc) when irc.Type = typeof<string> && irc.Type = ri.Type ->
+                    // http://stackoverflow.com/questions/7027384/the-binary-operator-add-is-not-defined-for-the-types-system-string-and-syste
+                    let concatMethod = typeof<string>.GetMethod("Concat", [| typeof<string>; typeof<string> |]); 
                     match irc.Value, ri.Value with
-                    | (:? string  as lstr), (:? string  as rstr) when irc.Type = typeof<string>  -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
+                    | (:? string  as lstr), (:? string  as rstr) when irc.Type = typeof<string>  -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type), concatMethod) :> Expression 
                     | _ -> e
                 // ((x + 2) + 2) = x + 4 and ((2 + x) + 2) = x + 4 
                 | ExpressionType.Constant, _, (:? ConstantExpression as irc), _
