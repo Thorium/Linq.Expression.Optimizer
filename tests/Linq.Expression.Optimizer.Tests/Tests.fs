@@ -197,6 +197,16 @@ module Queries =
             select ( ((((x+2)+2)+2)+ (2+2))  +  ((y*2)*3)    +   ((z - 1) - 1))
         }
 
+    let qry18 (arr:int list) =
+        let y : int Option = Option.Some 5
+        let xx = box(Nullable<int>(7))
+        query{
+            for x in arr.AsQueryable() do
+            where ((not ((xx :?> Nullable<int>).HasValue) || 
+                    (xx :?> Nullable<int>).Value > 2) && (y.IsNone || (y.Value > x)) && true)
+            select (1)
+        }
+
     let testEq (xs:int[]) qry = 
         let res = xs |> Seq.toList |> qry |> testExpression
         res ||> should equal 
@@ -308,6 +318,11 @@ type ``Test Fixture`` () =
     [<Property>]
     member test.``Expression optimizer generates smaller expression17`` (xs:int[]) = testLteq xs qry17
 
+    [<Property>]
+    member test.``Expression optimizer generates equal results18`` (xs:int[]) = testEq xs qry18
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression18`` (xs:int[]) = testLteq xs qry18
+
 
 [<MemoryDiagnoser>]
 type Benchmark() =
@@ -328,7 +343,10 @@ type Benchmark() =
       (qry13 t).Expression; 
       (qry14 t).Expression; 
       (qry15 t).Expression; 
-      (qry16 t).Expression |]
+      (qry16 t).Expression;
+      (qry17 t).Expression;
+      (qry18 t).Expression;
+      |]
   let visitAndExecute = ExpressionOptimizer.visit >> executeExpression
 
   [<GlobalSetup>]
@@ -348,7 +366,10 @@ module Starter =
     [<EntryPoint>]
     let main argv =
         let r = BenchmarkDotNet.Running.BenchmarkRunner.Run<Benchmark>()
+
+        //let r = Benchmark().ExecuteOpt1()
         printfn "%O" r
+        let _ = Console.ReadLine()
         0
 
 // The main lag is the network transfer and SQL-execution.
@@ -356,6 +377,5 @@ module Starter =
 
 //|       Method |     Mean |    Error |   StdDev | Ratio | RatioSD |    Gen 0 |   Gen 1 | Gen 2 | Allocated |
 //|------------- |---------:|---------:|---------:|------:|--------:|---------:|--------:|------:|----------:|
-//| ExecutDirect | 16.13 ms | 0.318 ms | 0.340 ms |  1.00 |    0.00 |  93.7500 | 31.2500 |     - | 490.39 KB |
-//|  ExecuteOpt1 | 17.04 ms | 0.160 ms | 0.149 ms |  1.06 |    0.02 | 125.0000 | 62.5000 |     - | 606.01 KB |
-
+//| ExecuteDirect | 11.35 ms | 0.217 ms | 0.203 ms |  1.00 |    0.00 |  78.1250 | 31.2500 |     - | 562.82 KB |
+//|   ExecuteOpt1 | 11.85 ms | 0.206 ms | 0.192 ms |  1.04 |    0.02 | 109.3750 | 46.8750 |     - | 672.51 KB |

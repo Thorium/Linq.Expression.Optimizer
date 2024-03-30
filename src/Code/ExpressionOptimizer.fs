@@ -28,7 +28,20 @@ module Methods =
                     else None
                 if isNull ce.Value then None else
                 match getCorrectType ce.Value with
-                | None -> Expression.Lambda(parentExpr).Compile().DynamicInvoke(null) |> getCorrectType
+                | None -> 
+                     //Expression.Lambda(parentExpr).Compile().DynamicInvoke(null) |> getCorrectType
+
+                     let myVal = 
+                         match parentExpr with
+                         | :? MemberExpression as mainNode ->
+                             match mainNode.Member with
+                             | :? FieldInfo as fieldInfo when fieldInfo <> null ->
+                                fieldInfo.GetValue ce.Value
+                             | :? PropertyInfo as propInfo when propInfo <> null ->
+                                propInfo.GetValue(ce.Value, null)
+                             | _ -> ce.Value
+                         | _ -> ce.Value
+                     myVal |> getCorrectType
                 | x -> x
         | _ -> None
     
