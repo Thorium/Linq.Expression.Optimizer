@@ -2,6 +2,7 @@ source https://nuget.org/api/v2
 
 nuget FSharp.Core
 nuget FSharp.NET.Sdk
+nuget FSharp.Compiler.Tools
 
 group Build
   source https://nuget.org/api/v2

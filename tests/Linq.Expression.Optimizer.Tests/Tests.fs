@@ -379,9 +379,10 @@ module Starter =
 //13th Gen Intel Core i9-13900H, 1 CPU, 20 logical and 14 physical cores
 //  [Host]     : .NET Framework 4.8.1 (4.8.9181.0), X64 LegacyJIT VectorSize=256
 
-//| Method        | Mean     | Error    | StdDev   | Ratio | RatioSD | Gen0    | Gen1    | Allocated | Alloc Ratio |
-//|-------------- |---------:|---------:|---------:|------:|--------:|--------:|--------:|----------:|------------:|
-//| ExecuteDirect | 11.09 ms | 0.153 ms | 0.176 ms |  1.00 |    0.00 | 78.1250 | 31.2500 | 556.38 KB |        1.00 |
-//| ExecuteOpt1   | 11.67 ms | 0.095 ms | 0.079 ms |  1.05 |    0.02 | 93.7500 | 46.8750 | 656.63 KB |        1.18 |
 
-// Result: A laptop run 18 test-cases in 0.00058 seconds.
+//| Method        | Mean     | Error    | StdDev   | Ratio | RatioSD | Gen0     | Gen1    | Allocated | Alloc Ratio |
+//|-------------- |---------:|---------:|---------:|------:|--------:|---------:|--------:|----------:|------------:|
+//| ExecuteDirect | 11.33 ms | 0.221 ms | 0.263 ms |  1.00 |    0.00 |  78.1250 | 31.2500 | 556.38 KB |        1.00 |
+//| ExecuteOpt1   | 11.96 ms | 0.238 ms | 0.234 ms |  1.05 |    0.02 | 109.3750 | 46.8750 | 690.51 KB |        1.24 |
+
+// Result: A laptop run 18 test-cases in 0.00063 seconds.

@@ -47,7 +47,8 @@ let tags = "LINQ, Expression, Expressions, Expression tree, expressiontree, expr
 let solutionFile  = "Linq.Expression.Optimizer.sln"
 
 // Pattern specifying assemblies to be tested using xUnit
-let testAssemblies = "tests/**/bin/Release/*Tests*.dll"
+let testAssembliesDll = "tests/**/bin/Release/*Tests*.dll"
+let testAssembliesExe = "tests/**/bin/Release/*Tests*.exe"
 
 // Git configuration (used for publishing documentation in gh-pages branch)
 // The profile where the project is posted
@@ -150,7 +151,7 @@ Target "Build" (fun _ ->
 
 open Fake.Testing
 Target "RunTests" (fun _ ->
-    !! testAssemblies
+    !! testAssembliesDll ++ testAssembliesExe
         |> xUnit2 id
 )
 

@@ -148,10 +148,9 @@ module Methods =
     // Reductions:
     // [associate; commute; distribute; gather; identity; annihilate; absorb; idempotence; complement; doubleNegation; deMorgan]
 
-    [<return: Struct>]
     let inline internal (|ValueBool|_|) (e:Expression) = 
         match e.NodeType, e with 
-        | ExpressionType.Constant, (:? ConstantExpression as ce) when ce.Type = typeof<bool> -> ValueSome ce.Value
+        | ExpressionType.Constant, (:? ConstantExpression as ce) when ce.Type = typeof<bool> -> Some ce.Value
         | ExpressionType.MemberAccess, (:? MemberExpression as me) when (me.Expression :? ConstantExpression) && (me.Expression :?> ConstantExpression).Type = typeof<bool> -> 
             let ceVal = (me.Expression :?> ConstantExpression).Value
             let myVal = 
@@ -161,52 +160,46 @@ module Methods =
                 | :? PropertyInfo as propInfo when propInfo <> null ->
                     propInfo.GetValue(ceVal, null)
                 | _ -> ceVal
-            ValueSome myVal
-        | _ -> ValueNone
+            Some myVal
+        | _ -> None
 
-    [<return: Struct>]
     let inline internal (|IfThenElse|_|) (e:Expression) = 
         match e.NodeType, e with 
-        | ExpressionType.Conditional, (:? ConditionalExpression as ce) -> ValueSome (ce.Test, ce.IfTrue, ce.IfFalse)
-        | _ -> ValueNone
+        | ExpressionType.Conditional, (:? ConditionalExpression as ce) -> Some (ce.Test, ce.IfTrue, ce.IfFalse)
+        | _ -> None
 
-    [<return: Struct>]
     let inline internal (|Not'|_|) (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.Not, (:? UnaryExpression as ue) -> ValueSome(ue.Operand)
-        | _ -> ValueNone
+        | ExpressionType.Not, (:? UnaryExpression as ue) -> Some(ue.Operand)
+        | _ -> None
 
-    [<return: Struct>]
     let inline internal (|True'|_|) expr =
         match expr with
         | ValueBool o when (o :?> bool) ->
-            ValueSome expr
-        | _ -> ValueNone
+            Some expr
+        | _ -> None
 
-    [<return: Struct>]
     let inline internal (|False'|_|) expr =
         match expr with
         | ValueBool o when not (o :?> bool) ->
-            ValueSome expr
-        | _ -> ValueNone
+            Some expr
+        | _ -> None
 
-    [<return: Struct>]
     let inline internal (|Or'|_|) (e:Expression) =
         match e.NodeType, e with
         | _, IfThenElse (left, True' _, right) ->
-            ValueSome (left, right)
-        | ExpressionType.OrElse, ( :? BinaryExpression as be) -> ValueSome(be.Left,be.Right)
+            Some (left, right)
+        | ExpressionType.OrElse, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
         //| ExpressionType.Or, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
-        | _ -> ValueNone
+        | _ -> None
 
-    [<return: Struct>]
     let inline internal (|And'|_|) (e:Expression) =
         match e.NodeType, e with
         | _, IfThenElse (left, right, False' _) ->
-            ValueSome (left, right)
-        | ExpressionType.AndAlso, ( :? BinaryExpression as be)  -> ValueSome(be.Left,be.Right)
+            Some (left, right)
+        | ExpressionType.AndAlso, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
         //| ExpressionType.And, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
-        | _ -> ValueNone
+        | _ -> None
 
     /// Not in use, would cause looping...
     let associate = function
