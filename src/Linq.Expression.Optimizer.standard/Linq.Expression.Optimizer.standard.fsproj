@@ -9,7 +9,8 @@
     <Authors>Tuomas Hietanen</Authors>
     <Product>Linq.Expression.Optimizer</Product>
     <AssemblyName>Linq.Expression.Optimizer</AssemblyName>
-    <Name>Linq.Expression.Optimizer</Name>	
+    <Name>Linq.Expression.Optimizer</Name>
+    <TargetFSharpCoreVersion>8.0.0.0</TargetFSharpCoreVersion>
     <Description>Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For side-effect free Expressions. No compilation-subjective optimizations.</Description>
     <Copyright>The Unlicense</Copyright>
     <PackageLicenseUrl>https://github.com/thorium/Linq.Expression.Optimizer/blob/master/LICENSE.txt</PackageLicenseUrl>
@@ -27,9 +28,9 @@
     <Compile Include="../Code/Api.fs" />
   </ItemGroup>
   <ItemGroup>
-	<PackageReference Include="FSharp.Core" Version="4.2.3" Condition="'$(TargetFramework)' == 'netstandard1.6'" />
+	<!--<PackageReference Include="FSharp.Core" Version="4.2.3" Condition="'$(TargetFramework)' == 'netstandard1.6'" />-->
 	<PackageReference Include="System.ValueTuple" Version="4.3.0" Condition="'$(TargetFramework)' == 'netstandard1.6'" />
-    <PackageReference Include="FSharp.Core" Version="6.0.7" Condition="'$(TargetFramework)' != 'netstandard1.6'" />
+    <PackageReference Include="FSharp.Core" Version="8.0.200" Condition="'$(TargetFramework)' != 'netstandard1.6'" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

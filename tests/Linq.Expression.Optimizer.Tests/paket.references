@@ -3,3 +3,4 @@ group Test
 FsCheck.Xunit
 FsUnit.xUnit
 xunit.runner.visualstudio
+BenchmarkDotNet

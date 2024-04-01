@@ -375,7 +375,13 @@ module Starter =
 // The main lag is the network transfer and SQL-execution.
 // But we don't want the optimization to take too much resourses.
 
-//|       Method |     Mean |    Error |   StdDev | Ratio | RatioSD |    Gen 0 |   Gen 1 | Gen 2 | Allocated |
-//|------------- |---------:|---------:|---------:|------:|--------:|---------:|--------:|------:|----------:|
-//| ExecuteDirect | 11.35 ms | 0.217 ms | 0.203 ms |  1.00 |    0.00 |  78.1250 | 31.2500 |     - | 562.82 KB |
-//|   ExecuteOpt1 | 11.85 ms | 0.206 ms | 0.192 ms |  1.04 |    0.02 | 109.3750 | 46.8750 |     - | 672.51 KB |
+//BenchmarkDotNet v0.13.12, Windows 11 (10.0.22631.3296/23H2/2023Update/SunValley3)
+//13th Gen Intel Core i9-13900H, 1 CPU, 20 logical and 14 physical cores
+//  [Host]     : .NET Framework 4.8.1 (4.8.9181.0), X64 LegacyJIT VectorSize=256
+
+//| Method        | Mean     | Error    | StdDev   | Ratio | RatioSD | Gen0    | Gen1    | Allocated | Alloc Ratio |
+//|-------------- |---------:|---------:|---------:|------:|--------:|--------:|--------:|----------:|------------:|
+//| ExecuteDirect | 11.09 ms | 0.153 ms | 0.176 ms |  1.00 |    0.00 | 78.1250 | 31.2500 | 556.38 KB |        1.00 |
+//| ExecuteOpt1   | 11.67 ms | 0.095 ms | 0.079 ms |  1.05 |    0.02 | 93.7500 | 46.8750 | 656.63 KB |        1.18 |
+
+// Result: A laptop run 18 test-cases in 0.00058 seconds.

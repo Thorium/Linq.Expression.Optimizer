@@ -15,7 +15,7 @@ module Methods =
     /// We want to eliminate enum-types and constants like 1 or "a".
     /// But Constant value can be also another complex object like IQueryable.
     /// We don't want to evaluate those!
-    let internal ``constant basic type`` (parentExpr:Expression) (e:Expression) =
+    let inline internal ``constant basic type`` (parentExpr:Expression) (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.Constant, (:? ConstantExpression as ce) 
     #if NET35 || NET45
@@ -57,9 +57,9 @@ module Methods =
                 | ExpressionType.Constant, (:? ConstantExpression as ce) when (ce.Value :? IComparable) -> Some (ce.Value :?> IComparable)
                 | ExpressionType.Convert, (:? UnaryExpression as ue) -> ``constant basic type`` ue ue.Operand
                 | _ -> None
-            let createbool b = Expression.Constant(b,  typeof<bool>) :> Expression
             match ce.Left, ce.Right with
             | Constant l, Constant r -> 
+                let createbool b = Expression.Constant(b,  typeof<bool>) :> Expression
                 match e.NodeType with
                 | ExpressionType.Equal              -> createbool (l=r)
                 | ExpressionType.LessThan           -> createbool (l<r)
@@ -148,48 +148,65 @@ module Methods =
     // Reductions:
     // [associate; commute; distribute; gather; identity; annihilate; absorb; idempotence; complement; doubleNegation; deMorgan]
 
-    let internal (|Value|_|) (e:Expression) = 
+    [<return: Struct>]
+    let inline internal (|ValueBool|_|) (e:Expression) = 
         match e.NodeType, e with 
-        | ExpressionType.Constant, (:? ConstantExpression as ce) -> Some (ce.Value, ce.Type)
-        | _ -> None
+        | ExpressionType.Constant, (:? ConstantExpression as ce) when ce.Type = typeof<bool> -> ValueSome ce.Value
+        | ExpressionType.MemberAccess, (:? MemberExpression as me) when (me.Expression :? ConstantExpression) && (me.Expression :?> ConstantExpression).Type = typeof<bool> -> 
+            let ceVal = (me.Expression :?> ConstantExpression).Value
+            let myVal = 
+                match me.Member with
+                | :? FieldInfo as fieldInfo when fieldInfo <> null ->
+                    fieldInfo.GetValue ceVal
+                | :? PropertyInfo as propInfo when propInfo <> null ->
+                    propInfo.GetValue(ceVal, null)
+                | _ -> ceVal
+            ValueSome myVal
+        | _ -> ValueNone
 
-    let internal (|IfThenElse|_|) (e:Expression) = 
+    [<return: Struct>]
+    let inline internal (|IfThenElse|_|) (e:Expression) = 
         match e.NodeType, e with 
-        | ExpressionType.Conditional, (:? ConditionalExpression as ce) -> Some (ce.Test, ce.IfTrue, ce.IfFalse)
-        | _ -> None
+        | ExpressionType.Conditional, (:? ConditionalExpression as ce) -> ValueSome (ce.Test, ce.IfTrue, ce.IfFalse)
+        | _ -> ValueNone
 
-    let internal (|Not'|_|) (e:Expression) =
+    [<return: Struct>]
+    let inline internal (|Not'|_|) (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.Not, (:? UnaryExpression as ue) -> Some(ue.Operand)
-        | _ -> None
+        | ExpressionType.Not, (:? UnaryExpression as ue) -> ValueSome(ue.Operand)
+        | _ -> ValueNone
 
-    let internal (|True'|_|) expr =
+    [<return: Struct>]
+    let inline internal (|True'|_|) expr =
         match expr with
-        | Value (o, t) when t = typeof<bool> && (o :?> bool) ->
-            Some expr
-        | _ -> None
+        | ValueBool o when (o :?> bool) ->
+            ValueSome expr
+        | _ -> ValueNone
 
-    let internal (|False'|_|) expr =
+    [<return: Struct>]
+    let inline internal (|False'|_|) expr =
         match expr with
-        | Value (o, t) when t = typeof<bool> && not (o :?> bool) ->
-            Some expr
-        | _ -> None
+        | ValueBool o when not (o :?> bool) ->
+            ValueSome expr
+        | _ -> ValueNone
 
-    let internal (|Or'|_|) (e:Expression) =
+    [<return: Struct>]
+    let inline internal (|Or'|_|) (e:Expression) =
         match e.NodeType, e with
         | _, IfThenElse (left, True' _, right) ->
-            Some (left, right)
-        | ExpressionType.OrElse, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
+            ValueSome (left, right)
+        | ExpressionType.OrElse, ( :? BinaryExpression as be) -> ValueSome(be.Left,be.Right)
         //| ExpressionType.Or, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
-        | _ -> None
+        | _ -> ValueNone
 
-    let internal (|And'|_|) (e:Expression) =
+    [<return: Struct>]
+    let inline internal (|And'|_|) (e:Expression) =
         match e.NodeType, e with
         | _, IfThenElse (left, right, False' _) ->
-            Some (left, right)
-        | ExpressionType.AndAlso, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
+            ValueSome (left, right)
+        | ExpressionType.AndAlso, ( :? BinaryExpression as be)  -> ValueSome(be.Left,be.Right)
         //| ExpressionType.And, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
-        | _ -> None
+        | _ -> ValueNone
 
     /// Not in use, would cause looping...
     let associate = function
@@ -299,7 +316,7 @@ module Methods =
     /// Evaluate simple math between two constants.
     ///  9  *  3     -->    27
     /// "G" + "G"    -->   "GG"
-    let  ``evaluate basic constant math`` (e:Expression) =
+    let ``evaluate basic constant math`` (e:Expression) =
         match e with
         | (:? BinaryExpression as ce) -> 
             if ce.Left.Type <> ce.Right.Type then e

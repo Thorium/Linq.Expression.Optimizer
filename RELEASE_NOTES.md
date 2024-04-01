@@ -1,3 +1,7 @@
+### 1.0.19 - 01/04/2024
+* FSharp.Core update
+* Minor performance updates
+
 ### 1.0.18 - 11/03/2024
 * Support for basic math optimisation: ((x+2)+2)=x+4, #16
 
