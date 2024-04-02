@@ -23,11 +23,11 @@ description
     Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For side-effect free Expressions. No compilation-subjective optimizations.
 dependencies
   framework: net472
-    FSharp.Core >= 6.0.7
+    FSharp.Core >= 8.0.200
   framework: netstandard20
-    FSharp.Core >= 6.0.7
+    FSharp.Core >= 8.0.200
   framework: netstandard21
-    FSharp.Core >= 6.0.7
+    FSharp.Core >= 8.0.200
 files
     ../../src/Linq.Expression.Optimizer/bin/Release/Linq.Expression.Optimizer.dll ==> lib/net472
     ../../src/Linq.Expression.Optimizer/bin/Release/Linq.Expression.Optimizer.xml ==> lib/net472
