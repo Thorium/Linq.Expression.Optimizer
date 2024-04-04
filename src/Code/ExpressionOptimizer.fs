@@ -35,9 +35,9 @@ module Methods =
                          match parentExpr with
                          | :? MemberExpression as mainNode ->
                              match mainNode.Member with
-                             | :? FieldInfo as fieldInfo when fieldInfo <> null ->
+                             | :? FieldInfo as fieldInfo when not(isNull(fieldInfo)) ->
                                 fieldInfo.GetValue ce.Value
-                             | :? PropertyInfo as propInfo when propInfo <> null ->
+                             | :? PropertyInfo as propInfo when not(isNull(propInfo)) ->
                                 propInfo.GetValue(ce.Value, null)
                              | _ -> ce.Value
                          | _ -> ce.Value
@@ -155,9 +155,9 @@ module Methods =
             let ceVal = (me.Expression :?> ConstantExpression).Value
             let myVal = 
                 match me.Member with
-                | :? FieldInfo as fieldInfo when fieldInfo <> null ->
+                | :? FieldInfo as fieldInfo when not(isNull(fieldInfo)) ->
                     fieldInfo.GetValue ceVal
-                | :? PropertyInfo as propInfo when propInfo <> null ->
+                | :? PropertyInfo as propInfo when not(isNull(propInfo)) ->
                     propInfo.GetValue(ceVal, null)
                 | _ -> ceVal
             Some myVal
