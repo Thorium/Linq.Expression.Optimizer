@@ -1,3 +1,6 @@
+### 1.0.21 - 05/04/2024
+* Minor performance optimisation
+
 ### 1.0.20 - 02/04/2024
 * FSharp.Core update
 * Minor performance updates
