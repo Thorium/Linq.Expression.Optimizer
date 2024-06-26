@@ -23,6 +23,9 @@
     <DelaySign>False</DelaySign>
     <DocumentationFile>bin\Linq.Expression.Optimizer.xml</DocumentationFile>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net8.0' Or '$(TargetFramework)' == 'net6.0' Or '$(TargetFramework)' == 'netstandard2.1' ">
+      <DefineConstants>NETSTANDARD21</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <Compile Include="../Code/ExpressionOptimizer.fs" />
     <Compile Include="../Code/Api.fs" />

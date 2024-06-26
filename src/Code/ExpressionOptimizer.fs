@@ -79,21 +79,25 @@ module Methods =
         match e.NodeType, e with
         //FShap anonymous type:
         | ExpressionType.MemberAccess, ( :? MemberExpression as me)
-            when me.Member.DeclaringType.Name.ToUpper().StartsWith("ANONYMOUSOBJECT") || me.Member.DeclaringType.Name.ToUpper().StartsWith("TUPLE") ->
+            when me.Member.DeclaringType.Name.ToUpper().StartsWith("ANONYMOUSOBJECT") || me.Member.DeclaringType.Name.ToUpper().StartsWith "TUPLE" ->
                 let memberIndex = 
                     if me.Member.Name.StartsWith("Item") && me.Member.Name.Length > 4 then
-                        let ok, i = Int32.TryParse(me.Member.Name.Substring(4))
-                        if ok then Some i else None
-                    else None
+#if NETSTANDARD21
+                        let ok, i = Int32.TryParse(me.Member.Name.AsSpan 4)
+#else
+                        let ok, i = Int32.TryParse(me.Member.Name.Substring 4)
+#endif
+                        if ok then ValueSome i else ValueNone
+                    else ValueNone
                 match memberIndex, me.Expression.NodeType, me.Expression, me.Member with 
-                | Some idx, ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when not(isNull ne || isNull p) -> 
+                | ValueSome idx, ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when not(isNull ne || isNull p) -> 
                     if ne.Arguments.Count > idx - 1 && ne.Arguments.[idx-1].Type = p.PropertyType then 
                         ne.Arguments.[idx-1] // We found it!
                     else e
                 | _ -> e
         //CSharp anonymous type:
         | ExpressionType.MemberAccess, ( :? MemberExpression as me)
-            when me.Member.DeclaringType.Name.ToUpper().StartsWith("<>F__ANONYMOUSTYPE") || me.Member.DeclaringType.Name.ToUpper().StartsWith("TUPLE") ->
+            when me.Member.DeclaringType.Name.ToUpper().StartsWith("<>F__ANONYMOUSTYPE") || me.Member.DeclaringType.Name.ToUpper().StartsWith "TUPLE" ->
                 match me.Expression.NodeType, me.Expression, me.Member with 
                 | ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when not(isNull ne.Arguments || isNull p) -> 
                         let selected = ne.Arguments |> Seq.tryPick(function
@@ -105,7 +109,7 @@ module Methods =
                         | None when not(isNull ne.Members) -> 
                             let selected = ne.Members |> Seq.tryPick(function
                                 | m when m.Name = me.Member.Name ->
-                                    let idx = ne.Members.IndexOf(m)
+                                    let idx = ne.Members.IndexOf m
                                     if ne.Arguments.Count > idx then
                                         match ne.Arguments.[idx] with
                                         | :? ParameterExpression as ape when ape.Type = p.PropertyType ->
