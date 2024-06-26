@@ -585,3 +585,13 @@ let visit exp =
 let tryVisit exp =
     try visit' exp
     with _ -> exp
+
+/// Expression tree visitor: go through the whole expression tree.
+let visitTyped<'T>(exp:Expression<'T>) =
+    visit' exp :?> Expression<'T>
+
+/// Expression tree visitor: go through the whole expression tree.
+/// Catches the exceptions.
+let tryVisitTyped<'T>(exp:Expression<'T>) =
+    try visit' exp :?> Expression<'T>
+    with _ -> exp
