@@ -1,4 +1,4 @@
-### 1.0.22 - 05/04/2024
+### 1.0.23 - 05/04/2024
 * Typed visit for C# wrapper, fix #13
 * Minor performance optimisation
 
