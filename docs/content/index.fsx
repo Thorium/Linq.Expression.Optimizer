@@ -9,8 +9,8 @@ Linq.Expression.Optimizer
 
 Lightweight optimizer of System.Linq.Expression expressions. 
 Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. 
-For side-effect free Expressions. No compilation-subjective optimizations. 
-This is meant to be used with expressions that are not compiled but transferred to other domain.
+For side-effect-free Expressions. No compilation-subjective optimizations. 
+This is meant to be used with expressions that are not compiled but transferred to other domains.
 
 Supported optimizations
 -------
@@ -122,7 +122,7 @@ Samples & documentation
 
 The library comes with comprehensible documentation. 
 It can include tutorials automatically generated from `*.fsx` files in docs/content/. 
-The API reference is automatically generated from Markdown comments in the library implementation.
+The API reference is automatically generated from Markdown comments during library implementation.
 
  * [Tutorial](tutorial.html) contains a further explanation of this sample library.
 
@@ -134,9 +134,9 @@ The API reference is automatically generated from Markdown comments in the libra
 Testimonials
 --------------------------
 
-This component is in use in a large scale enterprise application for simplifying and 
-streamlining key financial processes. There is a huge data processing-pipeline with thousands of 
-different SQL-clauses (some also very complex) against separate Oracle server cluster. 
+This component is used in large-scale enterprise applications to simplify and
+streamline key financial processes. There is a huge data processing pipeline with thousands of 
+different SQL clauses (some also very complex) against separate Oracle server clusters. 
 The pipeline used pure EntityFramework and was converted to use LinqKit with Linq.Expression.Optimizer. 
 The process was performance tested multiple times, and the execution time was dropped 
 from 15h 30min to 14h 30min, mainly due to delivering less CPU usage to Oracle servers.
@@ -147,7 +147,7 @@ Contributing and copyright
 
 The project is hosted on [GitHub][gh] where you can [report issues][issues], fork 
 the project and submit pull requests. If you're adding a new public API, please also 
-consider adding [samples][content] that can be turned into a documentation. You might
+consider adding [samples][content] that can be turned into documentation. You might
 also want to read the [library design notes][readme] to understand how it works.
 
 The library is available under Public Domain license, which allows modification and 

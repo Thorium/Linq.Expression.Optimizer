@@ -373,7 +373,7 @@ module Starter =
         0
 
 // The main lag is the network transfer and SQL-execution.
-// But we don't want the optimization to take too much resourses.
+// But we don't want the optimization to take too much resources.
 
 //BenchmarkDotNet v0.13.12, Windows 11 (10.0.22631.3296/23H2/2023Update/SunValley3)
 //13th Gen Intel Core i9-13900H, 1 CPU, 20 logical and 14 physical cores
@@ -385,4 +385,4 @@ module Starter =
 //| ExecuteDirect | 11.33 ms | 0.221 ms | 0.263 ms |  1.00 |    0.00 |  78.1250 | 31.2500 | 556.38 KB |        1.00 |
 //| ExecuteOpt1   | 11.96 ms | 0.238 ms | 0.234 ms |  1.05 |    0.02 | 109.3750 | 46.8750 | 690.51 KB |        1.24 |
 
-// Result: A laptop run 18 test-cases in 0.00063 seconds.
+// Result: A laptop ran 18 test cases in 0.00063 seconds.

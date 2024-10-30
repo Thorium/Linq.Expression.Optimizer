@@ -13,7 +13,7 @@ open System.Linq.Expressions
 module Methods =
 
     /// We want to eliminate enum-types and constants like 1 or "a".
-    /// But Constant value can be also another complex object like IQueryable.
+    /// But the constant value can also be another complex object, such as IQueryable.
     /// We don't want to evaluate those!
     let inline internal ``constant basic type`` (parentExpr:Expression) (e:Expression) =
         match e.NodeType, e with
@@ -46,7 +46,7 @@ module Methods =
         | _ -> None
     
 
-    /// Purpose of this is optimize away already known constant=constant style expressions.
+    /// The purpose of this is to optimize away already known constant=constant style expressions.
     ///   7 > 8      -->   False
     /// "G" = "G"    -->   True
     let ``replace constant comparison`` (e:Expression) =
@@ -478,7 +478,7 @@ let mutable reductionMethods = [
      Methods.annihilate; Methods.absorb; Methods.idempotence; Methods.complement; Methods.doubleNegation; 
      Methods.deMorgan; Methods.balancetree]
 
-/// Does reductions just for a current node.
+/// Do reductions just for a current node?
 let rec doReduction (exp:Expression) =
     if exp = Unchecked.defaultof<Expression> then exp else 
     let opt = reductionMethods |> Seq.fold(fun acc f -> f(acc)) exp

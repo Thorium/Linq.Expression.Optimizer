@@ -1,6 +1,6 @@
 (*** hide ***)
-// This block of code is omitted in the generated HTML documentation. Use 
-// it to define helpers that you do not want to show in the documentation.
+// This block of code is omitted in the generated HTML documentation. 
+// Use it to define helpers that you do not want to show in the documentation.
 #I "../../bin"
 (*** hide ***)
 #I "../../bin/Linq.Expression.Optimizer/"
@@ -8,7 +8,7 @@
 Introducing Linq.Expression.Optimizer
 ========================
 
-## Some example of boolean algebra simplification / reduction:
+## Some examples of boolean algebra simplification / reduction:
 
 *)
 #if INTERACTIVE
@@ -67,16 +67,16 @@ Evaluating `optimized.ToString()` will give a result:
         OrElse (tupledArg.Item1 < 2)))
 ```
 
-So still bad, but not so bad.
+So, it's still bad, but not so bad.
 
 ## Anonymous object replacement
 
-The way LINQ is constructed that methods like JOIN, WHERE, SELECT, GROUPBY, ... have all their own little lambda parameters.
-If you use other expression tree visitors like [LinqKit](https://github.com/scottksmith95/LINQKit) these tools often merge 
-lambdas to another lambdas to get bigger expression trees. Usually this is not visible to the user. But the end result is:
-You endup in a situation where your SQL-query or whatever expression is massive. 
+The way LINQ is constructed means that methods like JOIN, WHERE, SELECT, GROUPBY, etc., have their own little lambda parameters.
+If you use other expression tree visitors like [LinqKit](https://github.com/scottksmith95/LINQKit), these tools often merge
+lambdas with other lambdas to get bigger expression trees. Usually, this is not visible to the user. But the end result is:
+You end up in a situation where your SQL query or whatever expression is massive. 
 
-Let's see an example, with fairly simple LINQ-query:
+Let's see an example, with a fairly simple LINQ query:
 
 *)
 
@@ -90,16 +90,16 @@ let qry =
 
 (**
 
-This will produce you three lamdas:
+This will produce three lamdas:
  
  - `_arg1 => new AnonymousObject(Item1=_arg1, Item2 = _arg1.MyProperty1, Item3 = _arg1.MyProperty2)`
  - `tupledarg => new AnonymousObject(Item1 = tupledarg.Item2, Item2 = tupledarg.Item3)`
  - `tupledarg => tupledarg.Item2`
 
-The reason is that the earlier commands don't know what the later-ones wants so they provide new tuple with 
-the whole object as first parameter.
+The reason is that the earlier command doesn't know what the later one wants so they provide new tuple with 
+the whole object as the first parameter.
 
-Now, these tools just inject the mechanically the lambdas to other, resulting this:
+Now, these tools just inject mechanically the lambdas into others, resulting in this:
 
 ```csharp
 _arg1 => new AnonymousObject(
@@ -117,12 +117,12 @@ _arg1 => new AnonymousObject(
 ```
 
 Can you follow what happened?
-And this is (kind of) correct. Now this expression will be transferred to the other domain, e.g. SQL. It depends the abilities of the O/R-mapper or what ever tool, that what this produces. But it can easily produce nested SELECT-clauses.
+This is (kind of) correct. Now, this expression will be transferred to the other domain, e.g., SQL. What this produces depends on the abilities of the O/R Mapper or whatever tool. But it can easily produce nested SELECT clauses.
 
-But...if you run this through this Linq.Expression.Optimizer, it will give the following result:
+But...if you run this through this Linq.Expression.Optimizer, will yield the following result:
 
 ```csharp
-// Middle step (not visible to user):
+// Middle step (not visible to the user):
 // _arg1 => new AnonymousObject(Item1 = _arg1.MyProperty1, Item2 = _arg1.MyProperty2).Item2
 
 // Final result:
@@ -131,9 +131,9 @@ _arg1 => _arg1.MyProperty2
 
 ...and if you compare this to the original LINQ, you can see that this is exactly what you want!
 
-For LinqKit users, there is a new [feature](https://github.com/scottksmith95/LINQKit#more-optimized-queries) that makes it easy to use this tool with LinqKit. Then if you want to, you can convert any of your EF IQueryables to optimized ones just by stating `.AsExpandable()` before your LINQ-logics. Useful if you have a large database or complex queries with a network-lag between business logics and database.
+For LinqKit users, there is a new [feature](https://github.com/scottksmith95/LINQKit#more-optimized-queries) that makes it easy to use this tool with LinqKit. Then if you want to, you can convert any of your EF IQueryables to optimized ones just by stating `.AsExpandable()` before your LINQ-logics. It is useful if you have a large database or complex queries with a network lag between business logic and the database.
 
-## How can I test that it produced correct result?
+## How can I test that it produced the correct result?
 
 *)
 

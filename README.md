@@ -5,8 +5,8 @@
 
 Lightweight optimizer of System.Linq.Expression expressions. 
 Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. 
-For side-effect free Expressions. No compilation-subjective optimizations. 
-This is meant to be used with expressions that are not compiled but transferred to other domain.
+For side-effect-free Expressions. No compilation-subjective optimizations. 
+This is meant to be used with expressions that are not compiled but transferred to other domains.
 
 Supported frameworks: Net 3.5, Net 4.5-... (and Mono), .NET Standard 1.6 (so also .NET Core)
 
@@ -34,12 +34,12 @@ Example as a quote. There are various other cases also.
 
 ## Background
 
-This is a side-track from [SQLProvider](https://github.com/fsprojects/SQLProvider), excelent tool that is
+This is a side-track from [SQLProvider](https://github.com/fsprojects/SQLProvider), excellent tool that is
 kind of OR-mapper with auto-generated objects, so it compiles any databases to .NET-language, and works
 fast on design time in Visual Studio or other editors.
 
-But I needed better SQL-queries. So this optimses .NET LINQ-expressions.
-These expressions were not ment to be compiled so [Nessos LinqOptimizer](https://github.com/nessos/LinqOptimizer) was not the right tool.
+But I needed better SQL-queries. So this optimises .NET LINQ-expressions.
+These expressions were not meant to be compiled, so [Nessos LinqOptimizer](https://github.com/nessos/LinqOptimizer) was not the right tool.
 I thought that .NET would optimize these automatically, but no.
    
 Read the [Getting started tutorial](http://thorium.github.io/Linq.Expression.Optimizer/index.html#Getting-started) to learn more.

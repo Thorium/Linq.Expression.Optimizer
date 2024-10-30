@@ -4,13 +4,13 @@
 // --------------------------------------------------------------------------------------
 
 // Binaries that have XML documentation (in a corresponding generated XML file)
-// Any binary output / copied to bin/projectName/projectName.dll will
-// automatically be added as a binary to generate API docs for.
-// for binaries output to root bin folder please add the filename only to the 
+// Any binary output / copied to bin/projectName/projectName.dll 
+// will automatically be added as a binary to generate API docs for.
+// For binaries output to the root bin folder, please add the filename only to the 
 // referenceBinaries list below in order to generate documentation for the binaries.
-// (This is the original behaviour of ProjectScaffold prior to multi project support)
+// (This is the original behaviour of ProjectScaffold prior to multi-project support)
 let referenceBinaries = []
-// Web site location for the generated documentation
+// Website location for the generated documentation
 let website = "/Linq.Expression.Optimizer"
 
 let githubLink = "https://github.com/Thorium/Linq.Expression.Optimizer"
@@ -24,7 +24,7 @@ let info =
     "project-nuget", "http://nuget.org/packages/Linq.Expression.Optimizer" ]
 
 // --------------------------------------------------------------------------------------
-// For typical project, no changes are needed below
+// For a typical project, no changes are needed below
 // --------------------------------------------------------------------------------------
 
 #load "../../packages/build/FSharp.Formatting/FSharp.Formatting.fsx"
@@ -116,14 +116,14 @@ let buildDocumentation () =
       generateAnchors = true,
       processRecursive = false)
 
-  // And then process files which are placed in the sub directories
-  // (some sub directories might be for specific language).
+  // And then process files which are placed in the sub-directories
+  // (some sub-directories might be for specific languages).
 
   let subdirs = Directory.EnumerateDirectories(content, "*", SearchOption.TopDirectoryOnly)
   for dir in subdirs do
     let dirname = (new DirectoryInfo(dir)).Name
     let layoutRoots =
-        // Check whether this directory name is for specific language
+        // Check whether this directory name is for a specific language
         let key = layoutRootsAll.Keys
                   |> Seq.tryFind (fun i -> i = dirname)
         match key with
