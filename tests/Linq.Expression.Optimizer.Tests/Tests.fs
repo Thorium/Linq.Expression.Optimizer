@@ -347,7 +347,6 @@ type Benchmark() =
       (qry17 t).Expression;
       (qry18 t).Expression;
       |]
-  let visitAndExecute = ExpressionOptimizer.visit >> executeExpression
 
   [<GlobalSetup>]
   member this.Setup() =()
@@ -359,7 +358,7 @@ type Benchmark() =
   
   [<Benchmark>] 
   member this.ExecuteOpt1() = 
-    let x = queries |> Array.map visitAndExecute
+    let x = queries |> Array.map (ExpressionOptimizer.visit >> executeExpression)
     ()
 
 module Starter = 
@@ -375,14 +374,13 @@ module Starter =
 // The main lag is the network transfer and SQL-execution.
 // But we don't want the optimization to take too much resources.
 
-//BenchmarkDotNet v0.13.12, Windows 11 (10.0.22631.3296/23H2/2023Update/SunValley3)
+//BenchmarkDotNet v0.13.12, Windows 11 (10.0.22631.4317/23H2/2023Update/SunValley3)
 //13th Gen Intel Core i9-13900H, 1 CPU, 20 logical and 14 physical cores
-//  [Host]     : .NET Framework 4.8.1 (4.8.9181.0), X64 LegacyJIT VectorSize=256
+//  [Host]     : .NET Framework 4.8.1 (4.8.9277.0), X64 LegacyJIT VectorSize=256
 
-
-//| Method        | Mean     | Error    | StdDev   | Ratio | RatioSD | Gen0     | Gen1    | Allocated | Alloc Ratio |
-//|-------------- |---------:|---------:|---------:|------:|--------:|---------:|--------:|----------:|------------:|
-//| ExecuteDirect | 11.33 ms | 0.221 ms | 0.263 ms |  1.00 |    0.00 |  78.1250 | 31.2500 | 556.38 KB |        1.00 |
-//| ExecuteOpt1   | 11.96 ms | 0.238 ms | 0.234 ms |  1.05 |    0.02 | 109.3750 | 46.8750 | 690.51 KB |        1.24 |
+// Method        | Mean     | Error    | StdDev   | Ratio | Gen0    | Gen1    | Allocated | Alloc Ratio |
+//|-------------- |---------:|---------:|---------:|------:|--------:|--------:|----------:|------------:|
+//| ExecuteDirect | 11.14 ms | 0.128 ms | 0.120 ms |  1.00 | 78.1250 | 31.2500 | 561.53 KB |        1.00 |
+//| ExecuteOpt1   | 11.58 ms | 0.102 ms | 0.091 ms |  1.04 | 93.7500 | 46.8750 | 657.88 KB |        1.17 |
 
 // Result: A laptop ran 18 test cases in 0.00063 seconds.

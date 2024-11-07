@@ -1,3 +1,6 @@
+### 1.0.24 - 07/11/2024
+* Perf opt: Faster type tests
+
 ### 1.0.23 - 05/04/2024
 * Typed visit for C# wrapper, fix #13
 * Minor performance optimisation
