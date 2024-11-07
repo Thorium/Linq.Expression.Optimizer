@@ -24,7 +24,7 @@ module Methods =
             when parentExpr.Type.GetTypeInfo().IsPrimitive -> 
     #endif
                 let getCorrectType (x:obj) = 
-                    if (x :? IComparable) && x.GetType() = parentExpr.Type then Some (x :?> IComparable)
+                    if (x :? IComparable) && Type.(=)(x.GetType(), parentExpr.Type) then Some (x :?> IComparable)
                     else None
                 if isNull ce.Value then None else
                 match getCorrectType ce.Value with
