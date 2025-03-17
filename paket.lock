@@ -552,7 +552,7 @@ NUGET
     BenchmarkDotNet.Annotations (0.13.12) - restriction: && (>= net40) (>= netstandard2.0)
     CommandLineParser (2.9.1) - restriction: && (>= net40) (>= netstandard2.0)
     FsCheck (2.11) - restriction: >= net452
-      FSharp.Core (>= 4.0.0.1) - restriction: || (&& (>= net40) (< netstandard1.6) (>= portable-net45+win8)) (&& (>= net40) (< portable-net45+win8) (>= portable-net45+win8+wp8)) (&& (>= net40) (< portable-net45+win8+wp8) (>= portable-net45+win8+wp8+wpa81)) (>= net452)
+      FSharp.Core (>= 4.0.0.1) - restriction: || (&& (>= net40) (< netstandard1.6) (>= portable-net45+win8+wp8)) (&& (>= net40) (< netstandard1.6) (>= win8)) (&& (>= net40) (< portable-net45+win8+wp8) (>= portable-net45+win8+wp8+wpa81)) (>= net452)
     FsCheck.Xunit (2.11)
       FsCheck (2.11) - restriction: >= net452
       xunit.extensibility.execution (>= 2.2 < 3.0) - restriction: >= net452

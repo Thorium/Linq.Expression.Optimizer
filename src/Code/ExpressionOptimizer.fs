@@ -1,6 +1,8 @@
 ﻿/// This is just a light-weight expression optimizer.
 /// It won't do any heavy stuff...
+#if !INTERACTIVE
 module ExpressionOptimizer
+#endif
 
 open System.Linq.Expressions
 open System
@@ -11,6 +13,15 @@ open Microsoft.FSharp.Quotations
 open System.Linq.Expressions
 
 module Methods =
+
+    let internal propertyMatch (p:Expression) (p2:Expression) =
+        if p.NodeType <> p.NodeType then false
+        else
+        match p.NodeType, p, p2 with
+        | ExpressionType.MemberAccess, (:? MemberExpression as pe1), (:? MemberExpression as pe2) -> 
+            (pe1.Member = pe2.Member) && (pe1.Expression = pe2.Expression) && pe1.ToString() = pe2.ToString()
+        | _ -> false
+        
 
     /// We want to eliminate enum-types and constants like 1 or "a".
     /// But the constant value can also be another complex object, such as IQueryable.
@@ -127,9 +138,9 @@ module Methods =
     let ``cut not used condition`` (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.Conditional,        (:? ConditionalExpression as ce) -> 
-            match ce.Test with // For now, only direct booleans conditions are optimized to select query:
-            | :? ConstantExpression as c when c.Value = box(true) -> ce.IfTrue
-            | :? ConstantExpression as c when c.Value = box(false) -> ce.IfFalse
+            match ce.Test.NodeType, ce.Test with // For now, only direct booleans conditions are optimized to select query:
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box(true) -> ce.IfTrue
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box(false) -> ce.IfFalse
             | _ -> e
         | _ -> e
 
@@ -137,9 +148,9 @@ module Methods =
     let ``not false is true``(e:Expression) =
         match e.NodeType, e with
         | ExpressionType.Not, (:? UnaryExpression as ue) -> 
-            match ue.Operand with
-            | :? ConstantExpression as c when c.Value = box(false) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | :? ConstantExpression as c when c.Value = box(true) -> Expression.Constant(false, typeof<bool>) :> Expression
+            match ue.Operand.NodeType, ue.Operand with
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box(false) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box(true) -> Expression.Constant(false, typeof<bool>) :> Expression
             | _ -> e
         | _ -> e
 
@@ -191,26 +202,26 @@ module Methods =
 
     let inline internal (|Or'|_|) (e:Expression) =
         match e.NodeType, e with
-        | _, IfThenElse (left, True' _, right) ->
-            Some (left, right)
         | ExpressionType.OrElse, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
+        | ExpressionType.Conditional, IfThenElse (left, True' _, right) ->
+            Some (left, right)
         //| ExpressionType.Or, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
         | _ -> None
 
     let inline internal (|And'|_|) (e:Expression) =
         match e.NodeType, e with
-        | _, IfThenElse (left, right, False' _) ->
-            Some (left, right)
         | ExpressionType.AndAlso, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
+        | ExpressionType.Conditional, IfThenElse (left, right, False' _) ->
+            Some (left, right)
         //| ExpressionType.And, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
         | _ -> None
 
     /// Not in use, would cause looping...
     let associate = function
-        | Or' (Or' (l, r), r') -> Expression.OrElse(Expression.OrElse(l, r), r') :> Expression
-        | Or' (l, Or' (l', r)) -> Expression.OrElse(l, Expression.OrElse(l', r)) :> Expression
-        | And' (And' (l, r), r') -> Expression.AndAlso(Expression.AndAlso(l, r), r') :> Expression
-        | And' (l, And' (l', r)) -> Expression.AndAlso(l, Expression.AndAlso(l', r)) :> Expression
+        | Or' (Or' (l, r), r') -> Expression.OrElse(l, Expression.OrElse(r, r')) :> Expression
+        | Or' (l, Or' (l', r)) -> Expression.OrElse(Expression.OrElse(l, l'), r) :> Expression
+        | And' (And' (l, r), r') -> Expression.AndAlso(l, Expression.AndAlso(r, r')) :> Expression
+        | And' (l, And' (l', r)) -> Expression.AndAlso(Expression.AndAlso(l, l'), r) :> Expression
         | noHit -> noHit
 
     // We commute to AndAlso and OrElse, if not already in that format
@@ -220,14 +231,18 @@ module Methods =
         | noHit -> noHit
 
     /// Not in use, would cause looping...
-    let distribute = function
-        | And' (p, Or' (p', p'')) -> Expression.OrElse(Expression.AndAlso(p, p'), Expression.AndAlso(p, p'')) :> Expression
-        | Or' (p, And' (p', p'')) -> Expression.AndAlso(Expression.OrElse(p, p'), Expression.OrElse(p, p'')) :> Expression
+    /// This is opposite of gather
+    let distribute = fun e ->
+        match e with
+        | And' (p, Or' (p1, p2)) -> Expression.OrElse(Expression.AndAlso(p, p1), Expression.AndAlso(p, p2)) :> Expression
+        | Or' (p, And' (p1, p2)) -> Expression.AndAlso(Expression.OrElse(p, p1), Expression.OrElse(p, p2)) :> Expression
+        | And' (Or' (p1, p2), p) -> Expression.OrElse(Expression.AndAlso(p1, p), Expression.AndAlso(p2, p)) :> Expression
+        | Or' (And' (p1, p2), p) -> Expression.AndAlso(Expression.OrElse(p1, p), Expression.OrElse(p2, p)) :> Expression
         | noHit -> noHit
 
     let gather = function
-        | And' (Or'(p, p'), Or'(p'', p''')) when p = p'' -> Expression.OrElse(p, Expression.AndAlso(p', p''')) :> Expression
-        | Or' (And'(p, p'), And'(p'', p''')) when p = p'' -> Expression.AndAlso(p, Expression.OrElse(p', p''')) :> Expression
+        | And' (Or'(p, p1), Or'(p2, p3)) when p = p2 || propertyMatch p p2 -> Expression.OrElse(p, Expression.AndAlso(p1, p3)) :> Expression
+        | Or' (And'(p, p1), And'(p2, p3)) when p = p2 || propertyMatch p p2 -> Expression.AndAlso(p, Expression.OrElse(p1, p3)) :> Expression
         | noHit -> noHit
 
     let identity = function
@@ -246,26 +261,157 @@ module Methods =
         | noHit -> noHit
 
     let absorb = function
-        | And' (p, Or' (p', _)) 
-        | And' (p, Or' (_, p')) 
-        | And' (Or' (p', _), p)
-        | And' (Or' (_, p'), p)
-        | Or' (p, And' (p', _))
-        | Or' (p, And' (_, p'))
-        | Or' (And' (p', _), p)
-        | Or' (And' (_, p'), p) when p = p' -> p
+        | And' (p, Or' (p1, _)) 
+        | And' (p, Or' (_, p1)) 
+        | And' (Or' (p1, _), p)
+        | And' (Or' (_, p1), p)
+        | Or' (p, And' (p1, _))
+        | Or' (p, And' (_, p1))
+        | Or' (And' (p1, _), p)
+        | Or' (And' (_, p1), p) when p = p1 || propertyMatch p p1 -> p
+        | noHit -> noHit
+
+    // This is to fix some part of pure distribute being disabled
+    let distribute_complement = fun exp ->
+        match exp with
+        | And' (innercontent) ->
+            match innercontent with
+            | (p, Or' (Not' p1, p2))  
+            | (p, Or' (p2, Not' p1))  
+            | (Or' (Not' p1, p2), p)  
+                when p = p1 || propertyMatch p p1 -> Expression.And(p, p2) :> Expression
+            | (Or' (p2, Not' p1), p)  
+                when p = p1 || propertyMatch p p1 -> Expression.And(p2, p) :> Expression
+            | _ -> exp
+        | Or' (innercontent) ->
+            match innercontent with
+            | (p, And' (Not' p1, p2))  
+            | (p, And' (p2, Not' p1))  
+            | (And' (Not' p1, p2), p)  
+                when p = p1 || propertyMatch p p1 -> Expression.OrElse(p, p2) :> Expression
+            | (And' (p2, Not' p1), p)  
+                when p = p1 || propertyMatch p p1 -> Expression.OrElse(p2, p) :> Expression
+            | (Or'(p2, Not' p), And'(p1, Not' p4))
+            | (Or'(Not' p, p2), And'(p1, Not' p4))
+            | (Or'(Not' p, p2), And'(Not' p4, p1))
+            | (Or'(Not' p, p2), And'(Not' p4, p1))
+                when ((p = p1 && p2 = p4) || (propertyMatch p p1 && propertyMatch p2 p4)) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (p, And' (Not' p1, p2)), Or'(Not' p3, p4))
+            | (Or' (p, And' (p2, Not' p1)), Or'(Not' p3, p4))
+            | (Or' (And' (Not' p1, p2), p), Or'(Not' p3, p4))
+            | (Or' (p, And' (Not' p1, p2)), Or'(p4, Not' p3))
+            | (Or' (p, And' (p2, Not' p1)), Or'(p4, Not' p3))
+            | (Or' (And' (Not' p1, p2), p), Or'(p4, Not' p3))
+                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.OrElse(Expression.OrElse(p, p2), p4) :> Expression
+            | (Or' (And' (p2, Not' p1), p), Or'(Not' p3, p4))
+            | (Or' (And' (p2, Not' p1), p), Or'(p4, Not' p3))
+                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.OrElse(Expression.OrElse(p2, p), p4) :> Expression
+            | (Or'(Not' p3, p4), Or' (p, And' (Not' p1, p2)))
+            | (Or'(Not' p3, p4), Or' (p, And' (p2, Not' p1)))
+            | (Or'(Not' p3, p4), Or' (And' (Not' p1, p2), p))
+            | (Or'(Not' p3, p4), Or' (And' (p2, Not' p1), p))
+                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.OrElse(Expression.OrElse(p, p2), p4) :> Expression
+            | (Or'(Not' p4, p3), Or' (p, And' (Not' p1, p2)))
+            | (Or'(Not' p4, p3), Or' (p, And' (p2, Not' p1)))
+            | (Or'(Not' p4, p3), Or' (And' (Not' p1, p2), p))
+            | (Or'(Not' p4, p3), Or' (And' (p2, Not' p1), p))
+                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.OrElse(p4, Expression.OrElse(p, p2)) :> Expression
+            | (Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)), p5)
+            | (Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)), p5)
+            | (Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)), p5)
+            | (Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)), p5)
+            | (p5, Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)))
+            | (p5, Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)))
+            | (p5, Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)))
+            | (p5, Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)))
+                when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
+
+            // Complete normal form:
+            | (Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)), p5)
+            | (Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)), p5)
+            | (Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)), p5)
+            | (Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)), p5)
+            | (p5, Or'(And'(p1, Not' p4), Not'(Or'(p, p2))))
+            | (p5, Or'(And'(p1, Not' p4), Not'(Or'(p2, p))))
+            | (p5, Or'(And'(Not' p4, p1), Not'(Or'(p, p2))))
+            | (p5, Or'(And'(Not' p4, p1), Not'(Or'(p2, p))))
+            | (Or'(Not'(Or'(p, p2)), p5), And'(p1, Not' p4))
+            | (Or'(Not'(Or'(p2, p)), p5), And'(p1, Not' p4))
+            | (Or'(Not'(Or'(p, p2)), p5), And'(Not' p4, p1))
+            | (Or'(Not'(Or'(p2, p)), p5), And'(Not' p4, p1))
+            | (Or'(And'(p1, Not' p4), p5), Not'(Or'(p, p2)))
+            | (Or'(And'(p1, Not' p4), p5), Not'(Or'(p2, p)))
+            | (Or'(And'(Not' p4, p1), p5), Not'(Or'(p, p2)))
+            | (Or'(And'(Not' p4, p1), p5), Not'(Or'(p2, p)))
+                when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | _ -> exp
+            
+        | noHit -> noHit
+
+
+    // This is to fix some part of pure associate being disabled
+    let associate_complement = fun exp ->
+        match exp with
+        | And' (innercontent) ->
+            match innercontent with
+            |(Not' (And' (p, p2)), p1) 
+            |(Not' (And' (p2, p)), p1) 
+            |(p1, Not' (And' (p, p2))) 
+            |(p1, Not' (And' (p2, p))) 
+                when p = p1 || propertyMatch p p1 -> Expression.Not(Expression.AndAlso(p2, p)) :> Expression
+            |(And' (p, _), Not' p1)
+            |(And' (Not' p, _), p1)
+            |(Not' p1, And' (p, _))
+            |(p1, And' (Not' p, _))
+                when p = p1 || propertyMatch p p1 -> Expression.Constant(false, typeof<bool>) :> Expression
+            | _ -> exp
+        | Or' (innercontent) ->
+            match innercontent with
+            |(Not' (Or' (p2, p)), p1) 
+                when p = p1 || propertyMatch p p1 -> Expression.OrElse(Expression.Not(p2), p1) :> Expression
+            |(Not' (Or' (p, p2)), p1) 
+            |(p1, Not' (Or' (p, p2))) 
+            |(p1, Not' (Or' (p2, p))) 
+                when p = p1 || propertyMatch p p1 -> Expression.OrElse(p1, Expression.Not(p2)) :> Expression
+            |(Or' (_, p), Not' p1) 
+            |(Or' (p, _), Not' p1) 
+            |(Not' p1, Or' (_, p)) 
+            |(Not' p1, Or' (p, _)) 
+            |(Or' (_, Not' p), p1) 
+            |(Or' (Not' p, _), p1) 
+            |(p1, Or' (_, Not' p)) 
+            |(p1, Or' (Not' p, _)) 
+                when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
+            |(Or'(_, Or' (_, p)), Not' p1) 
+            |(Or'(_, Or' (p, _)), Not' p1) 
+            |(Or'(Or' (p, _), _), Not' p1) 
+            |(Or'(Or' (_, p), _), Not' p1) 
+
+            |(Not' p1, Or'(_, Or' (_, p))) 
+            |(Not' p1, Or'(_, Or' (p, _))) 
+            |(Not' p1, Or'(Or' (p, _), _)) 
+            |(Not' p1, Or'(Or' (_, p), _)) 
+
+            |(Or' (Or'(_, Not' p), _), p1) 
+            |(Or' (Or'(Not' p, _), _), p1) 
+            |(p1, Or' (Or'(_, Not' p), _)) 
+            |(p1, Or' (Or'(Not' p, _), _)) 
+
+                when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
+            | _ -> exp
         | noHit -> noHit
 
     let idempotence = function
-        | And' (p, p') when p = p' -> p
-        | Or' (p, p')  when p = p' -> p
+        | And' (p, p1) when p = p1 || propertyMatch p p1 -> p
+        | Or' (p, p1)  when p = p1 || propertyMatch p p1 -> p
         | noHit -> noHit
 
     let complement = function
-        | And' (p, Not' p')
-        | And' (Not' p, p') when p = p' -> Expression.Constant(false, typeof<bool>) :> Expression
-        | Or' (p, Not' p')
-        | Or' (Not' p, p') when p = p' -> Expression.Constant(true, typeof<bool>) :> Expression
+        | And' (p, Not' p1)
+        | And' (Not' p, p1) when p = p1 || propertyMatch p p1 -> Expression.Constant(false, typeof<bool>) :> Expression
+        | Or' (p, Not' p1)
+        | Or' (Not' p, p1) when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
+
         | noHit -> noHit
 
     let doubleNegation = function
@@ -273,8 +419,8 @@ module Methods =
         | noHit -> noHit
 
     let deMorgan = function
-        | Or' (Not' p, Not' p') -> Expression.Not(Expression.AndAlso(p, p')) :> Expression
-        | And' (Not' p, Not' p') -> Expression.Not(Expression.OrElse(p, p')) :> Expression
+        | Or' (Not' p, Not' p1) -> Expression.Not(Expression.AndAlso(p, p1)) :> Expression
+        | And' (Not' p, Not' p1) -> Expression.Not(Expression.OrElse(p, p1)) :> Expression
         | noHit -> noHit
 
     // ------------------------------------- //
@@ -474,7 +620,7 @@ let mutable reductionMethods = [
      Methods.``evaluate constants``;  Methods.``evaluate basic constant math``
      Methods.``replace constant comparison``; Methods.``remove AnonymousType``; 
      Methods.``cut not used condition``; Methods.``not false is true``;
-     (*Methods.associate;*) Methods.commute; (*Methods.distribute;*) Methods.gather; Methods.identity; 
+     (*Methods.associate;*) Methods.associate_complement; Methods.commute; (*Methods.distribute;*) Methods.distribute_complement; Methods.gather; Methods.identity; 
      Methods.annihilate; Methods.absorb; Methods.idempotence; Methods.complement; Methods.doubleNegation; 
      Methods.deMorgan; Methods.balancetree]
 
@@ -482,6 +628,7 @@ let mutable reductionMethods = [
 let rec doReduction (exp:Expression) =
     if exp = Unchecked.defaultof<Expression> then exp else 
     let opt = reductionMethods |> Seq.fold(fun acc f -> f(acc)) exp
+
     match opt = exp with
     | true -> exp
     | false -> doReduction opt
@@ -501,52 +648,51 @@ let rec internal visit' (exp:Expression): Expression =
 and internal visitchilds (e:Expression): Expression =
 
     if isNull e then null else
-    match e with
-    | (:? ConstantExpression as e)    -> 
+    match e.NodeType, e with
+    | ExpressionType.Constant, (:? ConstantExpression as e)    -> 
        let v = ``WhereSelectEnumerableIterator visitor`` e
        upcast v
-    | (:? ParameterExpression as e)   -> upcast e
-    | (:? UnaryExpression as e) -> 
-        let visit'ed = visit' e.Operand
-        if visit'ed=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visit'ed,e.Type,e.Method) 
-    | (:? BinaryExpression as e)      -> 
-        if e.NodeType = ExpressionType.Coalesce && not (isNull e.Conversion) then
-            let v1, v2, v3 = visit' e.Left, visit' e.Right, visit' e.Conversion
-            if v1=e.Left && v2=e.Right && v3=(e.Conversion:>Expression) then upcast e else upcast Expression.Coalesce(v1, v2, v3 :?> LambdaExpression)
-        else
-            let v1, v2 = visit' e.Left, visit' e.Right
-            if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(e.NodeType,v1,v2,e.IsLiftedToNull, e.Method)
-    | (:? MemberExpression as e)      -> 
+    | ExpressionType.Parameter, (:? ParameterExpression as e)   -> upcast e
+    | ExpressionType.MemberAccess, (:? MemberExpression as e)      -> 
         let v = visit' e.Expression
         if v=e.Expression then upcast e else upcast Expression.MakeMemberAccess(v, e.Member)
-    | (:? MethodCallExpression as e)  -> 
+    | ExpressionType.Call, (:? MethodCallExpression as e)  -> 
         let obje = visit' e.Object
         let args = e.Arguments |> Seq.toArray 
         let visited = args |> Array.map visit'
         if e.Object = obje && args = visited then upcast e else
         upcast Expression.Call(obje, e.Method, visited)
-    | (:? LambdaExpression as e)      -> 
+    | ExpressionType.Lambda, (:? LambdaExpression as e)      -> 
         let b = visit' e.Body 
         if b=e.Body then upcast e else upcast Expression.Lambda(e.Type, b, e.Parameters)
-    | (:? TypeBinaryExpression as e)  -> 
+    | ExpressionType.TypeIs, (:? TypeBinaryExpression as e)  -> 
         let v = visit'(e.Expression)
         if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
-    | (:? ConditionalExpression as e) -> 
+    | ExpressionType.Conditional, (:? ConditionalExpression as e) -> 
         let v1, v2, v3 = visit' e.Test, visit' e.IfTrue, visit' e.IfFalse
         if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
-    | (:? NewExpression as e) -> 
+    | ExpressionType.New, (:? NewExpression as e) -> 
         if isNull e.Members then
             upcast Expression.New(e.Constructor, e.Arguments |> Seq.map visit')
         else
             upcast Expression.New(e.Constructor, (e.Arguments |> Seq.map visit'), e.Members)
-    | (:? NewArrayExpression as e) when e.NodeType = ExpressionType.NewArrayBounds ->
+    | ExpressionType.NewArrayBounds, (:? NewArrayExpression as e) ->
                                          upcast Expression.NewArrayBounds(e.Type.GetElementType(), e.Expressions |> Seq.map visit')
-    | (:? NewArrayExpression as e)    -> upcast Expression.NewArrayInit(e.Type.GetElementType(), e.Expressions |> Seq.map visit')
-    | (:? InvocationExpression as e)  -> upcast Expression.Invoke(visit' e.Expression, e.Arguments |> Seq.map visit')
-    | (:? MemberInitExpression as e)  -> upcast Expression.MemberInit( (visit' e.NewExpression) :?> NewExpression , e.Bindings) //probably shoud visit' also bindings
-    | (:? ListInitExpression as e)    -> upcast Expression.ListInit( (visit' e.NewExpression) :?> NewExpression, e.Initializers) //probably shoud visit' also initialixers
-    | _ -> if (int e.NodeType = 52) then e // Expression.Extension
-           else failwith ("encountered unknown LINQ expression: " + e.NodeType.ToString() + " " + e.ToString())
+    | ExpressionType.NewArrayInit, (:? NewArrayExpression as e)    -> upcast Expression.NewArrayInit(e.Type.GetElementType(), e.Expressions |> Seq.map visit')
+    | ExpressionType.Invoke, (:? InvocationExpression as e)  -> upcast Expression.Invoke(visit' e.Expression, e.Arguments |> Seq.map visit')
+    | ExpressionType.MemberInit, (:? MemberInitExpression as e)  -> upcast Expression.MemberInit( (visit' e.NewExpression) :?> NewExpression , e.Bindings) //probably shoud visit' also bindings
+    | ExpressionType.ListInit, (:? ListInitExpression as e)    -> upcast Expression.ListInit( (visit' e.NewExpression) :?> NewExpression, e.Initializers) //probably shoud visit' also initialixers
+    | _, (:? UnaryExpression as e) -> 
+        let visit'ed = visit' e.Operand
+        if visit'ed=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visit'ed,e.Type,e.Method) 
+    | ExpressionType.Coalesce, (:? BinaryExpression as e) when  not (isNull e.Conversion) -> 
+            let v1, v2, v3 = visit' e.Left, visit' e.Right, visit' e.Conversion
+            if v1=e.Left && v2=e.Right && v3=(e.Conversion:>Expression) then upcast e else upcast Expression.Coalesce(v1, v2, v3 :?> LambdaExpression)
+    | nt, (:? BinaryExpression as e)      -> 
+            let v1, v2 = visit' e.Left, visit' e.Right
+            if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(nt,v1,v2,e.IsLiftedToNull, e.Method)
+    | nt, _ -> if (int nt = 52) then e // Expression.Extension
+               else failwith ("encountered unknown LINQ expression: " + e.NodeType.ToString() + " " + e.ToString())
 
 // Look also inside a LINQ-wrapper
 // https://referencesource.microsoft.com/#System.Core/System/Linq/Enumerable.cs,8bf16962931637d3,references

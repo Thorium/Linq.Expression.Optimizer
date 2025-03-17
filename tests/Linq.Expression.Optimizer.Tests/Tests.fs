@@ -13,18 +13,20 @@
 namespace Tests 
 #endif
 
-open System.Linq.Expressions
-open Xunit
-open FsUnit.Xunit
-open FsCheck
-open FsCheck.Xunit
 open System
 open System.Collections.Generic
 open System.Linq
 open System.Linq.Expressions
 open Microsoft.FSharp.Linq.RuntimeHelpers
-open NHamcrest.Core
+
+open Xunit
+open FsUnit.Xunit
+open FsCheck
+open FsCheck.Xunit
 open Xunit.Extensions
+open Xunit.Abstractions
+
+open NHamcrest.Core
 open BenchmarkDotNet.Attributes
 
 type Itm = {x:int}
@@ -35,12 +37,37 @@ module Queries =
 
     let testExpression (qry: IQueryable<'b>) = 
 
-        let optimized = ExpressionOptimizer.visit(qry.Expression)
+        let optimized = ExpressionOptimizer.visit qry.Expression
         let expected = executeExpression qry.Expression
         if optimized.GetHashCode() <> qry.Expression.GetHashCode() then
             let actual = executeExpression optimized
             expected, actual
         else expected, expected
+
+    let whereSelectLength (qryExpression: Expression) = 
+
+        let optimized = ExpressionOptimizer.visit qryExpression
+        let o = optimized.ToString()
+        let whereLength = 
+            let startposW = o.IndexOf(".Where(") + 6
+            if startposW = 5 then 
+                0 
+            else
+                let endposW = o.IndexOf(").", startposW)
+                if endposW = -1 then 
+                    o.LastIndexOf(")") - startposW
+                else endposW - startposW
+        let selectLength = 
+            let startposS = o.LastIndexOf(".Select(") + 7
+            if startposS = 6 then 
+                0 
+            else
+                let endposS = o.IndexOf(").", startposS)
+                if endposS = -1 then 
+                    o.LastIndexOf(")") - startposS
+                else endposS - startposS
+
+        whereLength, selectLength
 
     let qry1 (arr:int list) =
         query{
@@ -207,6 +234,24 @@ module Queries =
             select (1)
         }
 
+    let qry19 (arr:int list) =
+
+        let arr2 = arr |> List.map(fun x -> x, x < 5 , x > 2 && x < 7)
+        query{
+            for (i,a,b) in arr2.AsQueryable() do
+            where (b || (not a && not b) || (a && not b))
+            select i
+        }
+
+    let qry20 (arr:int list) =
+
+        let arr2 = arr |> List.map(fun x -> x, x < 5 , x > 2 && x < 7,  x < 2 || x = 4 || x > 7)
+        query{ // this is too deep, see issue #18
+            for (i,a,b,c) in arr2.AsQueryable() do
+            where ((not a && not b && not c) || (a && not b && not c) || (b && not c) || c)
+            select i
+        }
+
     let testEq (xs:int[]) qry = 
         let res = xs |> Seq.toList |> qry |> testExpression
         res ||> should equal 
@@ -216,6 +261,7 @@ module Queries =
         let optimized = ExpressionOptimizer.visit(expr)
         let o = optimized.ToString()
         let o2 = o.ToString()
+        printfn "%s" o2
         should lessThan (expr.ToString().Length) (optimized.ToString().Length)
 
     let testLteq (xs:int[]) qry = 
@@ -224,7 +270,7 @@ module Queries =
         should lessThanOrEqualTo (expr.ToString().Length) (optimized.ToString().Length)
 
 open Queries
-type ``Test Fixture`` () = 
+type ``Property Test Fixture`` () = 
     [<Fact>]
     member test.``Expression optimizer generates equal results on 1-2-3-4-5 array`` () =
                     testEq [|1;2;3;4;5|] qry1
@@ -323,6 +369,94 @@ type ``Test Fixture`` () =
     [<Property>]
     member test.``Expression optimizer generates smaller expression18`` (xs:int[]) = testLteq xs qry18
 
+    [<Property>]
+    member test.``Expression optimizer generates equal results19`` (xs:int[]) = testEq xs qry19
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression19`` (xs:int[]) = testLt xs qry19
+
+type ``Manual Test Fixture`` (output : ITestOutputHelper) = 
+    let t = [1;2;3;4;5;6;7;8;9]
+
+    let optQry (qry:int list -> IQueryable<_>) = 
+        (qry t).Expression 
+        |> ExpressionOptimizer.visit 
+
+    let testLength (expectedWhere:int) (expectedSelect:int) exp =
+        let actualWhere, actualSelect = whereSelectLength exp
+        should equal expectedWhere actualWhere
+        should equal expectedSelect actualSelect
+
+    [<Fact>]
+    member test.``qry01 optimized select where``() = 
+        let exp = optQry qry1
+        output.WriteLine (exp.ToString())
+        testLength 0 18 exp
+
+    [<Fact>]
+    member test.``qry04 optimized select where``() = 
+        let exp = optQry qry4
+        output.WriteLine (exp.ToString())
+        testLength 0 7 exp
+
+    [<Fact>]
+    member test.``qry07 optimized select where``() = 
+        let exp = optQry qry7
+        output.WriteLine (exp.ToString())
+        testLength 0 40 exp
+
+    [<Fact>]
+    member test.``qry10 optimized select where``() = 
+        let exp = optQry qry10
+        output.WriteLine (exp.ToString())
+        testLength 34 0 exp
+
+    [<Fact>]
+    member test.``qry11 optimized select where``() = 
+        let exp = optQry qry11
+        output.WriteLine (exp.ToString())
+        testLength 0 0 exp
+
+    [<Fact>]
+    member test.``qry13 optimized select where``() = 
+        let exp = optQry qry13
+        output.WriteLine (exp.ToString())
+        testLength 52 345 exp
+
+    [<Fact>]
+    member test.``qry14 optimized select where``() = 
+        let exp = optQry qry14
+        output.WriteLine (exp.ToString())
+        testLength 10 18 exp
+
+    [<Fact>]
+    member test.``qry15 optimized select where``() = 
+        let exp = optQry qry15
+        output.WriteLine (exp.ToString())
+        testLength 24 7 exp
+
+    [<Fact>]
+    member test.``qry17 optimized select where``() = 
+        let exp = optQry qry17
+        output.WriteLine (exp.ToString())
+        testLength 0 88 exp
+
+    [<Fact>]
+    member test.``qry18 optimized select where``() = 
+        let exp = optQry qry18
+        output.WriteLine (exp.ToString())
+        testLength 21 7 exp
+
+    [<Fact>]
+    member test.``qry19 optimized select where``() = 
+        let exp = optQry qry19
+        output.WriteLine (exp.ToString())
+        testLength 18 29 exp
+
+    [<Fact>]
+    member test.``qry20 optimized select where``() = 
+        let exp = optQry qry20
+        output.WriteLine (exp.ToString())
+        testLength 252 29 exp
 
 [<MemoryDiagnoser>]
 type Benchmark() =
@@ -346,6 +480,8 @@ type Benchmark() =
       (qry16 t).Expression;
       (qry17 t).Expression;
       (qry18 t).Expression;
+      (qry19 t).Expression;
+      (qry20 t).Expression;
       |]
 
   [<GlobalSetup>]

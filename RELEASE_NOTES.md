@@ -1,3 +1,7 @@
+### 1.0.25 - 17/03/2025
+* Added propertyMatch to ensure a.X = a.X even when not same memory instance of a.
+* Added some rules to overcome issues with associate and distribute loops.
+
 ### 1.0.24 - 07/11/2024
 * Perf opt: Faster type tests
 
