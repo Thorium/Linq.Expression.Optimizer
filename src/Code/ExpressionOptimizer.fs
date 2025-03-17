@@ -296,26 +296,24 @@ module Methods =
             | (Or'(Not' p, p2), And'(Not' p4, p1))
             | (Or'(Not' p, p2), And'(Not' p4, p1))
                 when ((p = p1 && p2 = p4) || (propertyMatch p p1 && propertyMatch p2 p4)) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or' (p, And' (Not' p1, p2)), Or'(Not' p3, p4))
-            | (Or' (p, And' (p2, Not' p1)), Or'(Not' p3, p4))
-            | (Or' (And' (Not' p1, p2), p), Or'(Not' p3, p4))
-            | (Or' (p, And' (Not' p1, p2)), Or'(p4, Not' p3))
-            | (Or' (p, And' (p2, Not' p1)), Or'(p4, Not' p3))
-            | (Or' (And' (Not' p1, p2), p), Or'(p4, Not' p3))
-                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.OrElse(Expression.OrElse(p, p2), p4) :> Expression
-            | (Or' (And' (p2, Not' p1), p), Or'(Not' p3, p4))
-            | (Or' (And' (p2, Not' p1), p), Or'(p4, Not' p3))
-                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.OrElse(Expression.OrElse(p2, p), p4) :> Expression
-            | (Or'(Not' p3, p4), Or' (p, And' (Not' p1, p2)))
-            | (Or'(Not' p3, p4), Or' (p, And' (p2, Not' p1)))
-            | (Or'(Not' p3, p4), Or' (And' (Not' p1, p2), p))
-            | (Or'(Not' p3, p4), Or' (And' (p2, Not' p1), p))
-                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.OrElse(Expression.OrElse(p, p2), p4) :> Expression
-            | (Or'(Not' p4, p3), Or' (p, And' (Not' p1, p2)))
-            | (Or'(Not' p4, p3), Or' (p, And' (p2, Not' p1)))
-            | (Or'(Not' p4, p3), Or' (And' (Not' p1, p2), p))
-            | (Or'(Not' p4, p3), Or' (And' (p2, Not' p1), p))
-                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.OrElse(p4, Expression.OrElse(p, p2)) :> Expression
+            | (Or' (p, And' (Not' p1, _)), Or'(Not' p3, _))
+            | (Or' (p, And' (_, Not' p1)), Or'(Not' p3, _))
+            | (Or' (And' (Not' p1, _), p), Or'(Not' p3, _))
+            | (Or' (p, And' (Not' p1, _)), Or'(_, Not' p3))
+            | (Or' (p, And' (_, Not' p1)), Or'(_, Not' p3))
+            | (Or' (And' (Not' p1, _), p), Or'(_, Not' p3))
+            | (Or' (And' (_, Not' p1), p), Or'(Not' p3, _))
+            | (Or' (And' (_, Not' p1), p), Or'(_, Not' p3))
+                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(Not' p3, _), Or' (p, And' (Not' p1, _)))
+            | (Or'(Not' p3, _), Or' (p, And' (_, Not' p1)))
+            | (Or'(Not' p3, _), Or' (And' (Not' p1, _), p))
+            | (Or'(Not' p3, _), Or' (And' (_, Not' p1), p))
+            | (Or'(Not' _, p3), Or' (p, And' (Not' p1, _)))
+            | (Or'(Not' _, p3), Or' (p, And' (_, Not' p1)))
+            | (Or'(Not' _, p3), Or' (And' (Not' p1, _), p))
+            | (Or'(Not' _, p3), Or' (And' (_, Not' p1), p))
+                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)), p5)
             | (Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)), p5)
             | (Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)), p5)
@@ -358,7 +356,7 @@ module Methods =
             |(Not' (And' (p2, p)), p1) 
             |(p1, Not' (And' (p, p2))) 
             |(p1, Not' (And' (p2, p))) 
-                when p = p1 || propertyMatch p p1 -> Expression.Not(Expression.AndAlso(p2, p)) :> Expression
+                when p = p1 || propertyMatch p p1 -> Expression.AndAlso(p, Expression.Not p2) :> Expression
             |(And' (p, _), Not' p1)
             |(And' (Not' p, _), p1)
             |(Not' p1, And' (p, _))
