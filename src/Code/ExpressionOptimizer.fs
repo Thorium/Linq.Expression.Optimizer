@@ -243,6 +243,8 @@ module Methods =
     let gather = function
         | And' (Or'(p, p1), Or'(p2, p3)) when p = p2 || propertyMatch p p2 -> Expression.OrElse(p, Expression.AndAlso(p1, p3)) :> Expression
         | Or' (And'(p, p1), And'(p2, p3)) when p = p2 || propertyMatch p p2 -> Expression.AndAlso(p, Expression.OrElse(p1, p3)) :> Expression
+        | And' (Or'(p, p1), Or'(p3, p2)) when p = p2 || propertyMatch p p2 -> Expression.OrElse(p, Expression.AndAlso(p1, p3)) :> Expression
+        | Or' (And'(p, p1), And'(p3, p2)) when p = p2 || propertyMatch p p2 -> Expression.AndAlso(p, Expression.OrElse(p1, p3)) :> Expression
         | noHit -> noHit
 
     let identity = function
@@ -271,10 +273,23 @@ module Methods =
         | Or' (And' (_, p1), p) when p = p1 || propertyMatch p p1 -> p
         | noHit -> noHit
 
+    let idempotence = function
+        | And' (p, p1) when p = p1 || propertyMatch p p1 -> p
+        | Or' (p, p1)  when p = p1 || propertyMatch p p1 -> p
+        | noHit -> noHit
+
+    let complement = function
+        | And' (p, Not' p1)
+        | And' (Not' p, p1) when p = p1 || propertyMatch p p1 -> Expression.Constant(false, typeof<bool>) :> Expression
+        | Or' (p, Not' p1)
+        | Or' (Not' p, p1) when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
+        | noHit -> noHit
+
     // This is to fix some part of pure distribute being disabled
     let distribute_complement = fun exp ->
         match exp with
         | And' (innercontent) ->
+            // All the following are decorated with And'( ... )
             match innercontent with
             | (p, Or' (Not' p1, p2))  
             | (p, Or' (p2, Not' p1))  
@@ -284,6 +299,7 @@ module Methods =
                 when p = p1 || propertyMatch p p1 -> Expression.And(p2, p) :> Expression
             | _ -> exp
         | Or' (innercontent) ->
+            // All the following are decorated with Or'( ... )
             match innercontent with
             | (p, And' (Not' p1, p2))  
             | (p, And' (p2, Not' p1))  
@@ -309,30 +325,26 @@ module Methods =
             | (Or'(Not' p3, _), Or' (p, And' (_, Not' p1)))
             | (Or'(Not' p3, _), Or' (And' (Not' p1, _), p))
             | (Or'(Not' p3, _), Or' (And' (_, Not' p1), p))
-            | (Or'(Not' _, p3), Or' (p, And' (Not' p1, _)))
-            | (Or'(Not' _, p3), Or' (p, And' (_, Not' p1)))
-            | (Or'(Not' _, p3), Or' (And' (Not' p1, _), p))
-            | (Or'(Not' _, p3), Or' (And' (_, Not' p1), p))
+            | (Or'(_, Not' p3), Or' (p, And' (Not' p1, _)))
+            | (Or'(_, Not' p3), Or' (p, And' (_, Not' p1)))
+            | (Or'(_, Not' p3), Or' (And' (Not' p1, _), p))
+            | (Or'(_, Not' p3), Or' (And' (_, Not' p1), p))
                 when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)), p5)
-            | (Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)), p5)
-            | (Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)), p5)
-            | (Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)), p5)
+            // Complete normal form:
             | (p5, Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)))
             | (p5, Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)))
             | (p5, Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)))
             | (p5, Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)))
-                when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
-
-            // Complete normal form:
-            | (Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)), p5)
-            | (Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)), p5)
-            | (Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)), p5)
-            | (Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)), p5)
             | (p5, Or'(And'(p1, Not' p4), Not'(Or'(p, p2))))
             | (p5, Or'(And'(p1, Not' p4), Not'(Or'(p2, p))))
             | (p5, Or'(And'(Not' p4, p1), Not'(Or'(p, p2))))
             | (p5, Or'(And'(Not' p4, p1), Not'(Or'(p2, p))))
+                when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
+
+            | (Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)), p5)
+            | (Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)), p5)
+            | (Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)), p5)
+            | (Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)), p5)
             | (Or'(Not'(Or'(p, p2)), p5), And'(p1, Not' p4))
             | (Or'(Not'(Or'(p2, p)), p5), And'(p1, Not' p4))
             | (Or'(Not'(Or'(p, p2)), p5), And'(Not' p4, p1))
@@ -351,6 +363,7 @@ module Methods =
     let associate_complement = fun exp ->
         match exp with
         | And' (innercontent) ->
+            // All the following are decorated with And'( ... )
             match innercontent with
             |(Not' (And' (p, p2)), p1) 
             |(Not' (And' (p2, p)), p1) 
@@ -364,6 +377,7 @@ module Methods =
                 when p = p1 || propertyMatch p p1 -> Expression.Constant(false, typeof<bool>) :> Expression
             | _ -> exp
         | Or' (innercontent) ->
+            // All the following are decorated with Or'( ... )
             match innercontent with
             |(Not' (Or' (p2, p)), p1) 
                 when p = p1 || propertyMatch p p1 -> Expression.OrElse(Expression.Not(p2), p1) :> Expression
@@ -397,19 +411,6 @@ module Methods =
 
                 when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
             | _ -> exp
-        | noHit -> noHit
-
-    let idempotence = function
-        | And' (p, p1) when p = p1 || propertyMatch p p1 -> p
-        | Or' (p, p1)  when p = p1 || propertyMatch p p1 -> p
-        | noHit -> noHit
-
-    let complement = function
-        | And' (p, Not' p1)
-        | And' (Not' p, p1) when p = p1 || propertyMatch p p1 -> Expression.Constant(false, typeof<bool>) :> Expression
-        | Or' (p, Not' p1)
-        | Or' (Not' p, p1) when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
-
         | noHit -> noHit
 
     let doubleNegation = function
