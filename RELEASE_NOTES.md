@@ -1,3 +1,6 @@
+### 1.0.28 - 26/03/2025
+* Improved boolean algebra optimisation
+
 ### 1.0.27 - 18/03/2025
 * Added propertyMatch to ensure a.X = a.X even when not same memory instance of a.
 * Added some rules to overcome issues with associate and distribute loops.
