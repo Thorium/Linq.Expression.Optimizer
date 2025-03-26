@@ -15,7 +15,7 @@ open System.Linq.Expressions
 module Methods =
 
     let internal propertyMatch (p:Expression) (p2:Expression) =
-        if p.NodeType <> p.NodeType then false
+        if p.NodeType <> p2.NodeType then false
         else
         match p.NodeType, p, p2 with
         | ExpressionType.MemberAccess, (:? MemberExpression as pe1), (:? MemberExpression as pe2) -> 
@@ -203,6 +203,7 @@ module Methods =
     let inline internal (|Or'|_|) (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.OrElse, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
+        | ExpressionType.Or, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
         | ExpressionType.Conditional, IfThenElse (left, True' _, right) ->
             Some (left, right)
         //| ExpressionType.Or, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
@@ -211,6 +212,7 @@ module Methods =
     let inline internal (|And'|_|) (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.AndAlso, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
+        | ExpressionType.And, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
         | ExpressionType.Conditional, IfThenElse (left, right, False' _) ->
             Some (left, right)
         //| ExpressionType.And, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
@@ -307,11 +309,23 @@ module Methods =
                 when p = p1 || propertyMatch p p1 -> Expression.OrElse(p, p2) :> Expression
             | (And' (p2, Not' p1), p)  
                 when p = p1 || propertyMatch p p1 -> Expression.OrElse(p2, p) :> Expression
+
             | (Or'(p2, Not' p), And'(p1, Not' p4))
             | (Or'(Not' p, p2), And'(p1, Not' p4))
             | (Or'(Not' p, p2), And'(Not' p4, p1))
             | (Or'(Not' p, p2), And'(Not' p4, p1))
                 when ((p = p1 && p2 = p4) || (propertyMatch p p1 && propertyMatch p2 p4)) -> Expression.Constant(true, typeof<bool>) :> Expression
+
+            | (And'(Not' p, Not' p2), And'(p1, Not' p3))
+            | (And'(Not' p2, Not' p), And'(p1, Not' p3))
+            | (And'(Not' p, Not' p2), And'(Not' p3, p1))
+            | (And'(Not' p2, Not' p), And'(Not' p3, p1))
+            | (And'(p1, Not' p3), And'(Not' p, Not' p2))
+            | (And'(p1, Not' p3), And'(Not' p2, Not' p))
+            | (And'(Not' p3, p1), And'(Not' p, Not' p2))
+            | (And'(Not' p3, p1), And'(Not' p2, Not' p))
+                when ((p = p1 && p2 = p3) || (propertyMatch p p1 && propertyMatch p2 p3)) -> Expression.Not(p2) :> Expression
+
             | (Or' (p, And' (Not' p1, _)), Or'(Not' p3, _))
             | (Or' (p, And' (_, Not' p1)), Or'(Not' p3, _))
             | (Or' (And' (Not' p1, _), p), Or'(Not' p3, _))
@@ -354,6 +368,66 @@ module Methods =
             | (Or'(And'(Not' p4, p1), p5), Not'(Or'(p, p2)))
             | (Or'(And'(Not' p4, p1), p5), Not'(Or'(p2, p)))
                 when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
+            // Eliminate negations of p towards Disjunctive Normal Form (after deMorgan already applied)
+
+            | (Or'(Not'(Or'(p3, p2)), And'(p4, Not' p1)), p) 
+            | (Or'(Not'(Or'(p2, p3)), And'(p4, Not' p1)), p) 
+            | (Or'(Not'(Or'(p3, p2)), And'(Not' p1, p4)), p) 
+            | (Or'(Not'(Or'(p2, p3)), And'(Not' p1, p4)), p) 
+            | (Or'(Not'(Or'(p3, p2)), p), And'(p4, Not' p1)) 
+            | (Or'(Not'(Or'(p2, p3)), p), And'(p4, Not' p1)) 
+            | (Or'(Not'(Or'(p3, p2)), p), And'(Not' p1, p4)) 
+            | (Or'(Not'(Or'(p2, p3)), p), And'(Not' p1, p4)) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(Expression.Not(p3),p4), p) :> Expression
+            | (Or'(And'(p4, Not' p1), Not'(Or'(p3, p2))), p) 
+            | (Or'(And'(p4, Not' p1), Not'(Or'(p2, p3))), p) 
+            | (Or'(And'(Not' p1, p4), Not'(Or'(p3, p2))), p) 
+            | (Or'(And'(Not' p1, p4), Not'(Or'(p2, p3))), p) 
+            | (Or'(And'(p4, Not' p1), p), Not'(Or'(p3, p2))) 
+            | (Or'(And'(p4, Not' p1), p), Not'(Or'(p2, p3))) 
+            | (Or'(And'(Not' p1, p4), p), Not'(Or'(p3, p2))) 
+            | (Or'(And'(Not' p1, p4), p), Not'(Or'(p2, p3))) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(p4, Expression.Not(p3)), p) :> Expression
+            | (p, Or'(Not'(Or'(p3, p2)), And'(p4, Not' p1))) 
+            | (p, Or'(Not'(Or'(p2, p3)), And'(p4, Not' p1))) 
+            | (p, Or'(Not'(Or'(p3, p2)), And'(Not' p1, p4))) 
+            | (p, Or'(Not'(Or'(p2, p3)), And'(Not' p1, p4))) 
+            | (Or'(p, Not'(Or'(p3, p2))), And'(p4, Not' p1)) 
+            | (Or'(p, Not'(Or'(p2, p3))), And'(p4, Not' p1)) 
+            | (Or'(p, Not'(Or'(p3, p2))), And'(Not' p1, p4)) 
+            | (Or'(p, Not'(Or'(p2, p3))), And'(Not' p1, p4)) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(Expression.Not(p3),p4)) :> Expression
+            | (p, Or'(And'(p4, Not' p1), Not'(Or'(p3, p2)))) 
+            | (p, Or'(And'(p4, Not' p1), Not'(Or'(p2, p3)))) 
+            | (p, Or'(And'(Not' p1, p4), Not'(Or'(p3, p2)))) 
+            | (p, Or'(And'(Not' p1, p4), Not'(Or'(p2, p3)))) 
+            | (Or'(p, And'(p4, Not' p1)), Not'(Or'(p3, p2))) 
+            | (Or'(p, And'(p4, Not' p1)), Not'(Or'(p2, p3))) 
+            | (Or'(p, And'(Not' p1, p4)), Not'(Or'(p3, p2))) 
+            | (Or'(p, And'(Not' p1, p4)), Not'(Or'(p2, p3))) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(p4, Expression.Not(p3))) :> Expression
+                     
+            | (Not'(Or'(Or'(p2, p4), p1)), And'(And'(p5, Not' p3), Not' p))
+            | (Not'(Or'(Or'(p2, p4), p1)), And'(And'(Not' p3, p5), Not' p))
+            | (Not'(Or'(Or'(p2, p4), p1)), And'(Not' p, And'(p5, Not' p3)))
+            | (Not'(Or'(Or'(p2, p4), p1)), And'(Not' p, And'(Not' p3, p5)))
+            | (And'(And'(Not' p3, p5), Not' p), Not'(Or'(Or'(p4, p2), p1)))
+            | (And'(And'(Not' p3, p5), Not' p), Not'(Or'(Or'(p2, p4), p1)))
+                when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.And(Expression.Not p2, Expression.Not p1), Expression.Or(Expression.Not p4, p5))  :> Expression
+            | (And'(Not' p, And'(p5, Not' p3)), Not'(Or'(Or'(p4, p2), p1)))
+            | (And'(Not' p, And'(p5, Not' p3)), Not'(Or'(Or'(p2, p4), p1)))
+            | (And'(Not' p, And'(Not' p3, p5)), Not'(Or'(Or'(p4, p2), p1)))
+            | (And'(Not' p, And'(Not' p3, p5)), Not'(Or'(Or'(p2, p4), p1)))
+                when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.And(Expression.Not p1, Expression.Not p2), Expression.Or(Expression.Not p4, p5))  :> Expression
+            | (Not'(Or'(Or'(p4, p2), p1)), And'(And'(p5, Not' p3), Not' p))
+            | (Not'(Or'(Or'(p4, p2), p1)), And'(And'(Not' p3, p5), Not' p))
+            | (Not'(Or'(Or'(p4, p2), p1)), And'(Not' p, And'(p5, Not' p3)))
+            | (Not'(Or'(Or'(p4, p2), p1)), And'(Not' p, And'(Not' p3, p5)))
+                when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.Or(Expression.Not p4, p5), Expression.And(Expression.Not p1, Expression.Not p2))  :> Expression
+            | (And'(And'(p5, Not' p3), Not' p), Not'(Or'(Or'(p4, p2), p1)))
+            | (And'(And'(p5, Not' p3), Not' p), Not'(Or'(Or'(p2, p4), p1)))
+                when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.Or(p5, Expression.Not p4), Expression.And(Expression.Not p1, Expression.Not p2))  :> Expression
+
             | _ -> exp
             
         | noHit -> noHit
@@ -663,7 +737,9 @@ and internal visitchilds (e:Expression): Expression =
         upcast Expression.Call(obje, e.Method, visited)
     | ExpressionType.Lambda, (:? LambdaExpression as e)      -> 
         let b = visit' e.Body 
-        if b=e.Body then upcast e else upcast Expression.Lambda(e.Type, b, e.Parameters)
+        if b=e.Body then upcast e 
+        else 
+        upcast Expression.Lambda(e.Type, visit' b, e.Parameters) // intentional revisit
     | ExpressionType.TypeIs, (:? TypeBinaryExpression as e)  -> 
         let v = visit'(e.Expression)
         if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
