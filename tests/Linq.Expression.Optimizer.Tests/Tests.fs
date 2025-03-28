@@ -457,6 +457,37 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
         output.WriteLine (exp.ToString())
         testLength 18 29 exp
 
+
+    [<Fact>]
+    member test.``can visit thousands of items in a fraction of a second``() = 
+
+        let max =
+#if DEBUG
+            220 // Debug build is not tailcall optimized, this will take a second
+#else
+            5000 // Release build is optimized, this will not take a second
+#endif
+
+        let exps = 
+            [| 0 .. max |] 
+            |> Array.fold
+                (fun s i -> Expression.And(s, Expression.LessThanOrEqual(Expression.Constant(i), Expression.Constant(i+1))) :> Expression)
+                    (Expression.Constant(true) :> Expression)
+        let sw = System.Diagnostics.Stopwatch.StartNew ()
+        let opt = exps.Optimize()
+        sw.Stop ()
+        output.WriteLine ("Optimized: " + opt.ToString() + " Took " + sw.Elapsed.ToString())
+        let exps2 = 
+            [| 0 .. max |] 
+            |> Array.fold
+                (fun s i -> Expression.Or(s, Expression.Equal(Expression.Constant(i), Expression.Constant(i+1))) :> Expression)
+                    (Expression.Constant(false) :> Expression)
+        
+        sw.Restart()
+        let opt2 = exps2.Optimize()
+        output.WriteLine ("Optimized 2: " + opt2.ToString() + " Took " + sw.Elapsed.ToString())
+
+
     [<Fact>]
     member test.``evaluate expression should match with replacement``() = 
         let Or' (a, b) = a || b
@@ -521,6 +552,21 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
                         testTrue (Or'(Not' p, p2), And'(p1, Not' p4))
                         testTrue (Or'(Not' p, p2), And'(Not' p4, p1))
                         testTrue (Or'(Not' p, p2), And'(Not' p4, p1))
+
+                   let testNotp4 exp =
+                       let replacement = not p4
+                       wrap2 exp |> should equal replacement
+
+                   if (p = p1 && p2 = p4) then
+                   
+                       testNotp4 (Not'(Or'(p, p2)), And'(p1, Not' p4))
+                       testNotp4 (Not'(Or'(p2, p)), And'(p1, Not' p4))
+                       testNotp4 (And'(p1, Not' p4), Not'(Or'(p, p2)))
+                       testNotp4 (And'(p1, Not' p4), Not'(Or'(p2, p)))
+                       testNotp4 (Not'(Or'(p, p2)), And'(Not' p4, p1))
+                       testNotp4 (Not'(Or'(p2, p)), And'(Not' p4, p1))
+                       testNotp4 (And'(Not' p4, p1), Not'(Or'(p, p2)))
+                       testNotp4 (And'(Not' p4, p1), Not'(Or'(p2, p)))
 
                    if (p = p1 && p = p3) then
                         testTrue (Or' (p, And' (Not' p1, u)), Or'(Not' p3, u))
@@ -735,8 +781,18 @@ type Benchmark() =
     ()
 
 module Starter = 
+    let consoleLogger = 
+        { new ITestOutputHelper with 
+            member _.WriteLine x = Console.WriteLine x 
+            member _.WriteLine(f,o) = failwith "not supported"
+        }
+
     [<EntryPoint>]
     let main argv =
+        Console.WriteLine "Testing a bit"
+        ``Manual Test Fixture``(consoleLogger).``can visit thousands of items in a fraction of a second``()
+        Console.WriteLine "Testing a bit2"
+
         let r = BenchmarkDotNet.Running.BenchmarkRunner.Run<Benchmark>()
 
         //let r = Benchmark().ExecuteOpt1()

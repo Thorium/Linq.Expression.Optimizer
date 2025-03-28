@@ -20,6 +20,8 @@ module Methods =
         match p.NodeType, p, p2 with
         | ExpressionType.MemberAccess, (:? MemberExpression as pe1), (:? MemberExpression as pe2) -> 
             (pe1.Member = pe2.Member) && (pe1.Expression = pe2.Expression) && pe1.ToString() = pe2.ToString()
+        | ExpressionType.Constant, (:? ConstantExpression as ce1), (:? ConstantExpression as ce2) -> 
+            ce1.Value = ce2.Value
         | _ -> false
         
 
@@ -178,6 +180,16 @@ module Methods =
             Some myVal
         | _ -> None
 
+    let inline internal (|ComparisonExpression|_|) (e:Expression) =
+        match e.NodeType, e with
+        | ExpressionType.LessThan,           (:? BinaryExpression as e) -> Some (e.NodeType, e.Left, e.Right)
+        | ExpressionType.LessThanOrEqual,    (:? BinaryExpression as e) -> Some (e.NodeType, e.Left, e.Right)
+        | ExpressionType.GreaterThan,        (:? BinaryExpression as e) -> Some (e.NodeType, e.Left, e.Right)
+        | ExpressionType.GreaterThanOrEqual, (:? BinaryExpression as e) -> Some (e.NodeType, e.Left, e.Right)
+        | ExpressionType.Equal,              (:? BinaryExpression as e) -> Some (e.NodeType, e.Left, e.Right)
+        | ExpressionType.NotEqual,           (:? BinaryExpression as e) -> Some (e.NodeType, e.Left, e.Right)
+        | _ -> None
+
     let inline internal (|IfThenElse|_|) (e:Expression) = 
         match e.NodeType, e with 
         | ExpressionType.Conditional, (:? ConditionalExpression as ce) -> Some (ce.Test, ce.IfTrue, ce.IfFalse)
@@ -289,6 +301,7 @@ module Methods =
 
     // This is to fix some part of pure distribute being disabled
     let distribute_complement = fun exp ->
+        // duplicate looking active pattern "when" guards are needed for some weird F# compiler reason being slow & eating stack & memory if they are not there
         match exp with
         | And' (innercontent) ->
             // All the following are decorated with And'( ... )
@@ -312,97 +325,115 @@ module Methods =
 
             | (Or'(p2, Not' p), And'(p1, Not' p4))
             | (Or'(Not' p, p2), And'(p1, Not' p4))
+                when ((p = p1 && p2 = p4) || (propertyMatch p p1 && propertyMatch p2 p4)) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(Not' p, p2), And'(Not' p4, p1))
             | (Or'(Not' p, p2), And'(Not' p4, p1))
                 when ((p = p1 && p2 = p4) || (propertyMatch p p1 && propertyMatch p2 p4)) -> Expression.Constant(true, typeof<bool>) :> Expression
 
+            | (Not'(Or'(p, p2)), And'(p1, Not' p4)) 
+            | (Not'(Or'(p2, p)), And'(p1, Not' p4)) when ((p = p1 && p2 = p4) || (propertyMatch p p1 && propertyMatch p2 p4)) -> Expression.Not(p4) :> Expression
+            | (And'(p1, Not' p4), Not'(Or'(p, p2))) 
+            | (And'(p1, Not' p4), Not'(Or'(p2, p))) when ((p = p1 && p2 = p4) || (propertyMatch p p1 && propertyMatch p2 p4)) -> Expression.Not(p4) :> Expression
+            | (Not'(Or'(p, p2)), And'(Not' p4, p1)) 
+            | (Not'(Or'(p2, p)), And'(Not' p4, p1)) when ((p = p1 && p2 = p4) || (propertyMatch p p1 && propertyMatch p2 p4)) -> Expression.Not(p4) :> Expression 
+            | (And'(Not' p4, p1), Not'(Or'(p, p2)))
+            | (And'(Not' p4, p1), Not'(Or'(p2, p))) when ((p = p1 && p2 = p4) || (propertyMatch p p1 && propertyMatch p2 p4)) -> Expression.Not(p4) :> Expression
+
             | (And'(Not' p, Not' p2), And'(p1, Not' p3))
-            | (And'(Not' p2, Not' p), And'(p1, Not' p3))
+            | (And'(Not' p2, Not' p), And'(p1, Not' p3)) when ((p = p1 && p2 = p3) || (propertyMatch p p1 && propertyMatch p2 p3)) -> Expression.Not(p2) :> Expression
             | (And'(Not' p, Not' p2), And'(Not' p3, p1))
-            | (And'(Not' p2, Not' p), And'(Not' p3, p1))
+            | (And'(Not' p2, Not' p), And'(Not' p3, p1)) when ((p = p1 && p2 = p3) || (propertyMatch p p1 && propertyMatch p2 p3)) -> Expression.Not(p2) :> Expression
             | (And'(p1, Not' p3), And'(Not' p, Not' p2))
-            | (And'(p1, Not' p3), And'(Not' p2, Not' p))
+            | (And'(p1, Not' p3), And'(Not' p2, Not' p)) when ((p = p1 && p2 = p3) || (propertyMatch p p1 && propertyMatch p2 p3)) -> Expression.Not(p2) :> Expression
             | (And'(Not' p3, p1), And'(Not' p, Not' p2))
-            | (And'(Not' p3, p1), And'(Not' p2, Not' p))
-                when ((p = p1 && p2 = p3) || (propertyMatch p p1 && propertyMatch p2 p3)) -> Expression.Not(p2) :> Expression
+            | (And'(Not' p3, p1), And'(Not' p2, Not' p)) when ((p = p1 && p2 = p3) || (propertyMatch p p1 && propertyMatch p2 p3)) -> Expression.Not(p2) :> Expression
+               
 
             | (Or' (p, And' (Not' p1, _)), Or'(Not' p3, _))
-            | (Or' (p, And' (_, Not' p1)), Or'(Not' p3, _))
+            | (Or' (p, And' (_, Not' p1)), Or'(Not' p3, _)) when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or' (And' (Not' p1, _), p), Or'(Not' p3, _))
-            | (Or' (p, And' (Not' p1, _)), Or'(_, Not' p3))
+            | (Or' (p, And' (Not' p1, _)), Or'(_, Not' p3)) when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or' (p, And' (_, Not' p1)), Or'(_, Not' p3))
-            | (Or' (And' (Not' p1, _), p), Or'(_, Not' p3))
+            | (Or' (And' (Not' p1, _), p), Or'(_, Not' p3)) when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or' (And' (_, Not' p1), p), Or'(Not' p3, _))
-            | (Or' (And' (_, Not' p1), p), Or'(_, Not' p3))
-                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (And' (_, Not' p1), p), Or'(_, Not' p3)) when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(Not' p3, _), Or' (p, And' (Not' p1, _)))
-            | (Or'(Not' p3, _), Or' (p, And' (_, Not' p1)))
+            | (Or'(Not' p3, _), Or' (p, And' (_, Not' p1))) when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(Not' p3, _), Or' (And' (Not' p1, _), p))
-            | (Or'(Not' p3, _), Or' (And' (_, Not' p1), p))
+            | (Or'(Not' p3, _), Or' (And' (_, Not' p1), p)) when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(_, Not' p3), Or' (p, And' (Not' p1, _)))
-            | (Or'(_, Not' p3), Or' (p, And' (_, Not' p1)))
+            | (Or'(_, Not' p3), Or' (p, And' (_, Not' p1))) when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(_, Not' p3), Or' (And' (Not' p1, _), p))
-            | (Or'(_, Not' p3), Or' (And' (_, Not' p1), p))
-                when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(_, Not' p3), Or' (And' (_, Not' p1), p)) when (p = p1 && p = p3) || (propertyMatch p p1 && propertyMatch p p3) -> Expression.Constant(true, typeof<bool>) :> Expression
             // Complete normal form:
             | (p5, Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)))
-            | (p5, Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)))
+            | (p5, Or'(Not'(Or'(p2, p)), And'(p1, Not' p4))) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (p5, Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)))
-            | (p5, Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)))
+            | (p5, Or'(Not'(Or'(p2, p)), And'(Not' p4, p1))) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (p5, Or'(And'(p1, Not' p4), Not'(Or'(p, p2))))
-            | (p5, Or'(And'(p1, Not' p4), Not'(Or'(p2, p))))
+            | (p5, Or'(And'(p1, Not' p4), Not'(Or'(p2, p)))) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (p5, Or'(And'(Not' p4, p1), Not'(Or'(p, p2))))
-            | (p5, Or'(And'(Not' p4, p1), Not'(Or'(p2, p))))
-                when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (p5, Or'(And'(Not' p4, p1), Not'(Or'(p2, p)))) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
 
             | (Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)), p5)
-            | (Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)), p5)
+            | (Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)), p5) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)), p5)
-            | (Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)), p5)
+            | (Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)), p5) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(Not'(Or'(p, p2)), p5), And'(p1, Not' p4))
-            | (Or'(Not'(Or'(p2, p)), p5), And'(p1, Not' p4))
+            | (Or'(Not'(Or'(p2, p)), p5), And'(p1, Not' p4)) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(Not'(Or'(p, p2)), p5), And'(Not' p4, p1))
-            | (Or'(Not'(Or'(p2, p)), p5), And'(Not' p4, p1))
+            | (Or'(Not'(Or'(p2, p)), p5), And'(Not' p4, p1)) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(And'(p1, Not' p4), p5), Not'(Or'(p, p2)))
-            | (Or'(And'(p1, Not' p4), p5), Not'(Or'(p2, p)))
+            | (Or'(And'(p1, Not' p4), p5), Not'(Or'(p2, p))) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
             | (Or'(And'(Not' p4, p1), p5), Not'(Or'(p, p2)))
-            | (Or'(And'(Not' p4, p1), p5), Not'(Or'(p2, p)))
-                when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(And'(Not' p4, p1), p5), Not'(Or'(p2, p))) when ((p = p1 && p2 = p4 && p2 = p5) || (propertyMatch p p1 && propertyMatch p2 p4 && propertyMatch p2 p5)) -> Expression.Constant(true, typeof<bool>) :> Expression
             // Eliminate negations of p towards Disjunctive Normal Form (after deMorgan already applied)
 
             | (Or'(Not'(Or'(p3, p2)), And'(p4, Not' p1)), p) 
             | (Or'(Not'(Or'(p2, p3)), And'(p4, Not' p1)), p) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(Expression.Not(p3),p4), p) :> Expression
             | (Or'(Not'(Or'(p3, p2)), And'(Not' p1, p4)), p) 
             | (Or'(Not'(Or'(p2, p3)), And'(Not' p1, p4)), p) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(Expression.Not(p3),p4), p) :> Expression
             | (Or'(Not'(Or'(p3, p2)), p), And'(p4, Not' p1)) 
             | (Or'(Not'(Or'(p2, p3)), p), And'(p4, Not' p1)) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(Expression.Not(p3),p4), p) :> Expression
             | (Or'(Not'(Or'(p3, p2)), p), And'(Not' p1, p4)) 
             | (Or'(Not'(Or'(p2, p3)), p), And'(Not' p1, p4)) 
                 when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(Expression.Not(p3),p4), p) :> Expression
             | (Or'(And'(p4, Not' p1), Not'(Or'(p3, p2))), p) 
             | (Or'(And'(p4, Not' p1), Not'(Or'(p2, p3))), p) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(p4, Expression.Not(p3)), p) :> Expression
             | (Or'(And'(Not' p1, p4), Not'(Or'(p3, p2))), p) 
             | (Or'(And'(Not' p1, p4), Not'(Or'(p2, p3))), p) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(p4, Expression.Not(p3)), p) :> Expression
             | (Or'(And'(p4, Not' p1), p), Not'(Or'(p3, p2))) 
             | (Or'(And'(p4, Not' p1), p), Not'(Or'(p2, p3))) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(p4, Expression.Not(p3)), p) :> Expression
             | (Or'(And'(Not' p1, p4), p), Not'(Or'(p3, p2))) 
             | (Or'(And'(Not' p1, p4), p), Not'(Or'(p2, p3))) 
                 when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(Expression.Or(p4, Expression.Not(p3)), p) :> Expression
             | (p, Or'(Not'(Or'(p3, p2)), And'(p4, Not' p1))) 
             | (p, Or'(Not'(Or'(p2, p3)), And'(p4, Not' p1))) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(Expression.Not(p3),p4)) :> Expression
             | (p, Or'(Not'(Or'(p3, p2)), And'(Not' p1, p4))) 
             | (p, Or'(Not'(Or'(p2, p3)), And'(Not' p1, p4))) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(Expression.Not(p3),p4)) :> Expression
             | (Or'(p, Not'(Or'(p3, p2))), And'(p4, Not' p1)) 
             | (Or'(p, Not'(Or'(p2, p3))), And'(p4, Not' p1)) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(Expression.Not(p3),p4)) :> Expression
             | (Or'(p, Not'(Or'(p3, p2))), And'(Not' p1, p4)) 
             | (Or'(p, Not'(Or'(p2, p3))), And'(Not' p1, p4)) 
                 when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(Expression.Not(p3),p4)) :> Expression
             | (p, Or'(And'(p4, Not' p1), Not'(Or'(p3, p2)))) 
             | (p, Or'(And'(p4, Not' p1), Not'(Or'(p2, p3)))) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(p4, Expression.Not(p3))) :> Expression
             | (p, Or'(And'(Not' p1, p4), Not'(Or'(p3, p2)))) 
             | (p, Or'(And'(Not' p1, p4), Not'(Or'(p2, p3)))) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(p4, Expression.Not(p3))) :> Expression
             | (Or'(p, And'(p4, Not' p1)), Not'(Or'(p3, p2))) 
             | (Or'(p, And'(p4, Not' p1)), Not'(Or'(p2, p3))) 
+                when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(p4, Expression.Not(p3))) :> Expression
             | (Or'(p, And'(Not' p1, p4)), Not'(Or'(p3, p2))) 
             | (Or'(p, And'(Not' p1, p4)), Not'(Or'(p2, p3))) 
                 when ((p = p1 && p = p2) || (propertyMatch p p1 && propertyMatch p p2)) -> Expression.Or(p, Expression.Or(p4, Expression.Not(p3))) :> Expression
@@ -410,17 +441,20 @@ module Methods =
             | (Not'(Or'(Or'(p2, p4), p1)), And'(And'(p5, Not' p3), Not' p))
             | (Not'(Or'(Or'(p2, p4), p1)), And'(And'(Not' p3, p5), Not' p))
             | (Not'(Or'(Or'(p2, p4), p1)), And'(Not' p, And'(p5, Not' p3)))
+                when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.And(Expression.Not p2, Expression.Not p1), Expression.Or(Expression.Not p4, p5))  :> Expression
             | (Not'(Or'(Or'(p2, p4), p1)), And'(Not' p, And'(Not' p3, p5)))
             | (And'(And'(Not' p3, p5), Not' p), Not'(Or'(Or'(p4, p2), p1)))
             | (And'(And'(Not' p3, p5), Not' p), Not'(Or'(Or'(p2, p4), p1)))
                 when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.And(Expression.Not p2, Expression.Not p1), Expression.Or(Expression.Not p4, p5))  :> Expression
             | (And'(Not' p, And'(p5, Not' p3)), Not'(Or'(Or'(p4, p2), p1)))
             | (And'(Not' p, And'(p5, Not' p3)), Not'(Or'(Or'(p2, p4), p1)))
+                when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.And(Expression.Not p1, Expression.Not p2), Expression.Or(Expression.Not p4, p5))  :> Expression
             | (And'(Not' p, And'(Not' p3, p5)), Not'(Or'(Or'(p4, p2), p1)))
             | (And'(Not' p, And'(Not' p3, p5)), Not'(Or'(Or'(p2, p4), p1)))
                 when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.And(Expression.Not p1, Expression.Not p2), Expression.Or(Expression.Not p4, p5))  :> Expression
             | (Not'(Or'(Or'(p4, p2), p1)), And'(And'(p5, Not' p3), Not' p))
             | (Not'(Or'(Or'(p4, p2), p1)), And'(And'(Not' p3, p5), Not' p))
+                when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.Or(Expression.Not p4, p5), Expression.And(Expression.Not p1, Expression.Not p2))  :> Expression
             | (Not'(Or'(Or'(p4, p2), p1)), And'(Not' p, And'(p5, Not' p3)))
             | (Not'(Or'(Or'(p4, p2), p1)), And'(Not' p, And'(Not' p3, p5)))
                 when ((p2 = p3 && p1 = p) || (propertyMatch p2 p3 && propertyMatch p1 p)) -> Expression.And(Expression.Or(Expression.Not p4, p5), Expression.And(Expression.Not p1, Expression.Not p2))  :> Expression
@@ -463,6 +497,7 @@ module Methods =
             |(Or' (p, _), Not' p1) 
             |(Not' p1, Or' (_, p)) 
             |(Not' p1, Or' (p, _)) 
+                when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
             |(Or' (_, Not' p), p1) 
             |(Or' (Not' p, _), p1) 
             |(p1, Or' (_, Not' p)) 
@@ -472,17 +507,16 @@ module Methods =
             |(Or'(_, Or' (p, _)), Not' p1) 
             |(Or'(Or' (p, _), _), Not' p1) 
             |(Or'(Or' (_, p), _), Not' p1) 
-
+                when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
             |(Not' p1, Or'(_, Or' (_, p))) 
             |(Not' p1, Or'(_, Or' (p, _))) 
             |(Not' p1, Or'(Or' (p, _), _)) 
             |(Not' p1, Or'(Or' (_, p), _)) 
-
+                when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
             |(Or' (Or'(_, Not' p), _), p1) 
             |(Or' (Or'(Not' p, _), _), p1) 
             |(p1, Or' (Or'(_, Not' p), _)) 
             |(p1, Or' (Or'(Not' p, _), _)) 
-
                 when p = p1 || propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
             | _ -> exp
         | noHit -> noHit
@@ -509,6 +543,113 @@ module Methods =
             -> Expression.AndAlso(Expression.AndAlso(Expression.AndAlso(p1, p2), Expression.AndAlso(p3, p4)), Expression.AndAlso(Expression.AndAlso(p5, p6), Expression.AndAlso(p7, p8))) :> Expression
         | noHit -> noHit
 
+    // A = "x" && A = "x" ->  A = "x"
+    let ``remove duplicate condition`` (e:Expression) =
+        // How deep we want to visit the tree? This is only 3 nodes.
+        match e with 
+        | And' inner ->
+            match inner with
+            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), And'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), And'(_,ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(_,ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(_, ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(ComparisonExpression (rightop, rightA, rightB),_), _)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(ComparisonExpression (rightop, rightA, rightB),_))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(_,ComparisonExpression (rightop, rightA, rightB)))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And'(And'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And'(And'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And'(_, And'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (And'(_, And'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | _ -> e
+        | Or' inner ->
+            match inner with
+            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(_, ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(ComparisonExpression (rightop, rightA, rightB),_), _)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(ComparisonExpression (rightop, rightA, rightB),_))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(_,ComparisonExpression (rightop, rightA, rightB)))) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or'(Or'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or'(Or'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or'(_, Or'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | (Or'(_, Or'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB)) -> fst inner
+            | _ -> e
+        | noHit -> noHit
+
+    let private checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) =
+        (
+            (leftop = ExpressionType.Equal && rightop = ExpressionType.NotEqual) ||
+            (leftop = ExpressionType.NotEqual && rightop = ExpressionType.Equal)
+            ) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB) ||
+                (leftA = rightB && leftB = rightA) || (propertyMatch leftA rightB && propertyMatch leftB rightA)
+        ) || (
+            (leftop = ExpressionType.LessThan && rightop = ExpressionType.GreaterThanOrEqual) ||
+            (leftop = ExpressionType.GreaterThan && rightop = ExpressionType.LessThanOrEqual) ||
+            (leftop = ExpressionType.GreaterThanOrEqual && rightop = ExpressionType.LessThan) ||
+            (leftop = ExpressionType.LessThanOrEqual && rightop = ExpressionType.GreaterThan)
+        ) && ((leftA = rightA && leftB = rightB) || (propertyMatch leftA rightA && propertyMatch leftB rightB))
+
+    // A = "x" && A <> "x"  ->  false
+    let ``remove mutually exclusive condition`` (e:Expression) =
+        // How deep we want to visit the tree? This is only 3 nodes.
+        match e with 
+        | And' inner ->
+
+            match inner with
+            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(_, ComparisonExpression (rightop, rightA, rightB))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(ComparisonExpression (rightop, rightA, rightB),_), _)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(ComparisonExpression (rightop, rightA, rightB),_))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(_,ComparisonExpression (rightop, rightA, rightB)))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And'(And'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And'(And'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And'(_, And'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And'(_, And'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | _ -> e
+        | Or' inner ->
+
+            match inner with
+            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(_, ComparisonExpression (rightop, rightA, rightB))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(ComparisonExpression (rightop, rightA, rightB),_), _)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(ComparisonExpression (rightop, rightA, rightB),_))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(_,ComparisonExpression (rightop, rightA, rightB)))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(Or'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(Or'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(_, Or'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(_, Or'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | _ -> e
+        | noHit -> noHit
+
     // ------------------------------------- //
     /// Evaluating constants to not mess with our expressions:
     let ``evaluate constants`` (e:Expression) =
@@ -533,15 +674,24 @@ module Methods =
     ///  9  *  3     -->    27
     /// "G" + "G"    -->   "GG"
     let ``evaluate basic constant math`` (e:Expression) =
-        match e with
-        | (:? BinaryExpression as ce) -> 
+        match e.NodeType, e with
+        | ExpressionType.Add, (:? BinaryExpression as ce)
+        | ExpressionType.AddChecked, (:? BinaryExpression as ce)
+        | ExpressionType.Subtract, (:? BinaryExpression as ce)
+        | ExpressionType.SubtractChecked, (:? BinaryExpression as ce)
+        | ExpressionType.Multiply, (:? BinaryExpression as ce)
+        | ExpressionType.MultiplyChecked, (:? BinaryExpression as ce)
+        | ExpressionType.Divide, (:? BinaryExpression as ce)
+        | ExpressionType.Modulo, (:? BinaryExpression as ce)
+                 -> 
             if ce.Left.Type <> ce.Right.Type then e
             else
             match ce.Left.NodeType, ce.Right.NodeType, ce.Left, ce.Right with
             | ExpressionType.Constant, ExpressionType.Constant, (:? ConstantExpression as le), (:? ConstantExpression as ri) ->
                 // F# doesn't support macros so this code is a bit copy-and-paste, but it should be trivial. 
                 match e.NodeType with
-                | ExpressionType.Add ->
+                | ExpressionType.Add 
+                | ExpressionType.AddChecked ->
                     match le.Value, ri.Value with
                     | (:? string  as lstr), (:? string  as rstr) when Type.(=) (le.Type, typeof<string>) -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
                     | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (le.Type, typeof<decimal>) -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
@@ -557,7 +707,8 @@ module Methods =
                     | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>)    -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
                     | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>)   -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
                     | _ -> e
-                | ExpressionType.Subtract -> 
+                | ExpressionType.Subtract
+                | ExpressionType.SubtractChecked -> 
                     match le.Value, ri.Value with
                     | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (le.Type, typeof<decimal>) -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
                     | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (le.Type, typeof<float32>) -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
@@ -572,7 +723,8 @@ module Methods =
                     | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>)    -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
                     | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>)   -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
                     | _ -> e
-                | ExpressionType.Multiply -> 
+                | ExpressionType.Multiply
+                | ExpressionType.MultiplyChecked -> 
                     match le.Value, ri.Value with
                     | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (le.Type, typeof<decimal>) -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
                     | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (le.Type, typeof<float32>) -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
@@ -692,7 +844,7 @@ module Methods =
 let mutable reductionMethods = [
      Methods.``evaluate constants``;  Methods.``evaluate basic constant math``
      Methods.``replace constant comparison``; Methods.``remove AnonymousType``; 
-     Methods.``cut not used condition``; Methods.``not false is true``;
+     Methods.``cut not used condition``; Methods.``not false is true``; Methods.``remove duplicate condition``; Methods.``remove mutually exclusive condition``; 
      (*Methods.associate;*) Methods.associate_complement; Methods.commute; (*Methods.distribute;*) Methods.distribute_complement; Methods.gather; Methods.identity; 
      Methods.annihilate; Methods.absorb; Methods.idempotence; Methods.complement; Methods.doubleNegation; 
      Methods.deMorgan; Methods.balancetree]
@@ -700,7 +852,7 @@ let mutable reductionMethods = [
 /// Do reductions just for a current node?
 let rec doReduction (exp:Expression) =
     if exp = Unchecked.defaultof<Expression> then exp else 
-    let opt = reductionMethods |> Seq.fold(fun acc f -> f(acc)) exp
+    let opt = Seq.fold(fun acc f -> f(acc)) exp reductionMethods
 
     match opt = exp with
     | true -> exp
@@ -712,14 +864,15 @@ let rec doReduction (exp:Expression) =
 
 // .NET has already this System.Linq.Expressions.Expressionvisitor
 // Too bad this was so simple and faster than what it would have taken to get to know that 700 rows of source code!
+[<TailCall>]
 let rec internal visit' (exp:Expression): Expression =
     //bottom up:
     if isNull exp then null else
-    let e2 = doReduction (visitchilds exp)
-    e2
-
+    doReduction (visitchilds exp)
+    
 and internal visitchilds (e:Expression): Expression =
 
+    //printfn "%i" (System.Diagnostics.StackTrace().FrameCount)
     if isNull e then null else
     match e.NodeType, e with
     | ExpressionType.Constant, (:? ConstantExpression as e)    -> 
