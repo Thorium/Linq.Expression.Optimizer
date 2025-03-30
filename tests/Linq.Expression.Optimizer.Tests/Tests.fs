@@ -1,14 +1,19 @@
 
 // https://fsprojects.github.io/FsUnit/
 #if INTERACTIVE
-#I "../../packages/test/xunit.extensibility.core/lib/portable-net45+win8+wp8+wpa81/"
-#r "../../packages/test/xunit.extensibility.core/lib/portable-net45+win8+wp8+wpa81/xunit.core.dll"
-#I "../../packages/test/xunit.assert/lib/dotnet/"
-#r "../../packages/test/xunit.assert/lib/dotnet/xunit.assert.dll"
-#I "../../packages/test/FsUnit.xUnit/lib/net45/"
-#r "../../packages/test/FsUnit.xUnit/lib/net45/NHamcrest.dll"
-#r "../../packages/test/FsUnit.xUnit/lib/net45/FsUnit.Xunit.dll"
-#load "../../src/Linq.Expression.Optimizer/ExpressionOptimizer.fs"
+#I "../../packages/test/xunit.extensibility.core/lib/netstandard2.0/"
+#r "../../packages/test/xunit.extensibility.core/lib/netstandard2.0/xunit.core.dll"
+#I "../../packages/test/xunit.assert/lib/netstandard2.0/"
+#r "../../packages/test/xunit.assert/lib/netstandard2.0/xunit.assert.dll"
+#I "../../packages/test/NHamcrest/lib/net451"
+#r "../../packages/test/NHamcrest/lib/net451/NHamcrest.dll"
+#I "../../packages/test/FsUnit.xUnit/lib/net46/"
+#r "../../packages/test/FsUnit.xUnit/lib/net46/FsUnit.Xunit.dll"
+#r "../../packages/test/FsCheck/lib/net452/FsCheck.dll"
+#r "../../packages/test/FsCheck.Xunit/lib/net452/FsCheck.Xunit.dll"
+#r "../../packages/test/xunit.abstractions/lib/netstandard2.0/xunit.abstractions.dll"
+#r "../../packages/test/BenchmarkDotNet.Annotations/lib/netstandard2.0/BenchmarkDotNet.Annotations.dll"
+#load "../../src/Code/ExpressionOptimizer.fs"
 #else
 namespace Tests 
 #endif
@@ -19,7 +24,6 @@ open System.Linq
 open System.Linq.Expressions
 open Microsoft.FSharp.Linq.RuntimeHelpers
 
-open Xunit
 open FsUnit.Xunit
 open FsCheck
 open FsCheck.Xunit
@@ -270,11 +274,11 @@ module Queries =
 
 open Queries
 type ``Property Test Fixture`` () = 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``Expression optimizer generates equal results on 1-2-3-4-5 array`` () =
                     testEq [|1;2;3;4;5|] qry1
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``Expression optimizer generates smaller expression on 1-2-3-4-5 array`` () = 
                     testLt [|1;2;3;4;5|] qry1
         
@@ -385,80 +389,80 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
         should equal expectedWhere actualWhere
         should equal expectedSelect actualSelect
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry01 optimized select where``() = 
         let exp = optQry qry1
         output.WriteLine (exp.ToString())
         testLength 0 18 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry04 optimized select where``() = 
         let exp = optQry qry4
         output.WriteLine (exp.ToString())
         testLength 0 7 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry07 optimized select where``() = 
         let exp = optQry qry7
         output.WriteLine (exp.ToString())
         testLength 0 40 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry10 optimized select where``() = 
         let exp = optQry qry10
         output.WriteLine (exp.ToString())
         testLength 34 0 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry11 optimized select where``() = 
         let exp = optQry qry11
         output.WriteLine (exp.ToString())
         testLength 0 0 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry13 optimized select where``() = 
         let exp = optQry qry13
         output.WriteLine (exp.ToString())
         testLength 52 345 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry14 optimized select where``() = 
         let exp = optQry qry14
         output.WriteLine (exp.ToString())
         testLength 10 18 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry15 optimized select where``() = 
         let exp = optQry qry15
         output.WriteLine (exp.ToString())
         testLength 24 7 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry17 optimized select where``() = 
         let exp = optQry qry17
         output.WriteLine (exp.ToString())
         testLength 0 88 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry18 optimized select where``() = 
         let exp = optQry qry18
         output.WriteLine (exp.ToString())
         testLength 21 7 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry19 optimized select where``() = 
         let exp = optQry qry19
         output.WriteLine (exp.ToString())
         testLength 18 29 exp
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``qry20 optimized select where``() = 
         let exp = optQry qry20
         output.WriteLine (exp.ToString())
         testLength 18 29 exp
 
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``can visit thousands of items in a fraction of a second``() = 
 
         let max =
@@ -488,7 +492,7 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
         output.WriteLine ("Optimized 2: " + opt2.ToString() + " Took " + sw.Elapsed.ToString())
 
 
-    [<Fact>]
+    [<Xunit.Fact>]
     member test.``evaluate expression should match with replacement``() = 
         let Or' (a, b) = a || b
         let Not' = (not)
