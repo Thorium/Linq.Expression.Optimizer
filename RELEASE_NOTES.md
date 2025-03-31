@@ -1,3 +1,7 @@
+### 1.0.29 - 31/03/2025
+* Further Improved boolean algebra optimisation
+* Initial implementation of "remove duplicate condition", "remove mutually exclusive condition"
+
 ### 1.0.28 - 26/03/2025
 * Improved boolean algebra optimisation
 
