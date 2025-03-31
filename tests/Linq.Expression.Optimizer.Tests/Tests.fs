@@ -804,8 +804,8 @@ type Benchmark() =
 module Starter = 
     let consoleLogger = 
         { new ITestOutputHelper with 
-            member _.WriteLine x = Console.WriteLine x 
-            member _.WriteLine(f,o) = failwith "not supported"
+            member __.WriteLine x = Console.WriteLine x 
+            member __.WriteLine(f,o) = failwith "not supported"
         }
 
     [<EntryPoint>]

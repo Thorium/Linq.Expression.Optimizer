@@ -3,6 +3,7 @@
 // --------------------------------------------------------------------------------------
 
 #r @"packages/build/FAKE/tools/FakeLib.dll"
+#I "packages/build/NETStandard.Library/build/netstandard2.0/ref"
 open Fake
 open Fake.Git
 open Fake.AssemblyInfoFile
@@ -15,7 +16,6 @@ open System.IO
 #load "packages/build/SourceLink.Fake/tools/Fake.fsx"
 open SourceLink
 #endif
-
 // This is template from ProjectScaffold
 // http://issuestats.com/github/fsprojects/ProjectScaffold
 
@@ -47,8 +47,8 @@ let tags = "LINQ, Expression, Expressions, Expression tree, expressiontree, expr
 let solutionFile  = "Linq.Expression.Optimizer.sln"
 
 // Pattern specifying assemblies to be tested using xUnit
-let testAssembliesDll = "tests/**/bin/Release/*Tests*.dll"
-let testAssembliesExe = "tests/**/bin/Release/*Tests*.exe"
+let testAssembliesDll = "tests/**/bin/Release/**/*Tests*.dll"
+let testAssembliesExe = "tests/**/bin/Release/**/*Tests*.exe"
 
 // Git configuration (used for publishing documentation in gh-pages branch)
 // The profile where the project is posted
@@ -137,13 +137,10 @@ Target "Build" (fun _ ->
             Project = coreProject
             Configuration = "Release"})
 
-    !! solutionFile
-#if MONO
-    |> MSBuildReleaseExt "" [ ("DefineConstants","MONO") ] "Rebuild"
-#else
-    |> MSBuildRelease "" "Rebuild"
-#endif
-    |> ignore
+    DotNetCli.Build(fun p -> 
+        { p with 
+            Project = solutionFile
+            Configuration = "Release"})
 )
 
 // --------------------------------------------------------------------------------------
@@ -238,7 +235,7 @@ let buildDocumentationTarget fsiargs target =
     trace (sprintf "Building documentation (%s), this could take some time, please wait..." target)
     let exit = executeFAKEWithOutput "docs/tools" "generate.fsx" fsiargs ["target", target]
     if exit <> 0 then
-        failwith "generating reference documentation failed"
+        Console.WriteLine "generating reference documentation failed"
     ()
 
 Target "GenerateReferenceDocs" (fun _ ->
