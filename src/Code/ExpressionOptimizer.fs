@@ -164,10 +164,10 @@ module Methods =
 
     // Reductions:
     // [associate; commute; distribute; gather; identity; annihilate; absorb; idempotence; complement; doubleNegation; deMorgan]
-
+    [<return: Struct>]
     let inline internal (|ValueBool|_|) (e:Expression) = 
         match e.NodeType, e with 
-        | ExpressionType.Constant, (:? ConstantExpression as ce) when Type.(=) (ce.Type, typeof<bool>) -> Some ce.Value
+        | ExpressionType.Constant, (:? ConstantExpression as ce) when Type.(=) (ce.Type, typeof<bool>) -> ValueSome (ce.Value :?> bool)
         | ExpressionType.MemberAccess, (:? MemberExpression as me) when (me.Expression :? ConstantExpression) && Type.(=) ((me.Expression :?> ConstantExpression).Type, typeof<bool>) -> 
             let ceVal = (me.Expression :?> ConstantExpression).Value
             let myVal = 
@@ -177,8 +177,8 @@ module Methods =
                 | :? PropertyInfo as propInfo when not(isNull(propInfo)) ->
                     propInfo.GetValue(ceVal, null)
                 | _ -> ceVal
-            Some myVal
-        | _ -> None
+            ValueSome (myVal :?> bool)
+        | _ -> ValueNone
 
     let inline internal (|ComparisonExpression|_|) (e:Expression) =
         match e.NodeType, e with
@@ -200,17 +200,19 @@ module Methods =
         | ExpressionType.Not, (:? UnaryExpression as ue) -> Some(ue.Operand)
         | _ -> None
 
+    [<return: Struct>]
     let inline internal (|True'|_|) expr =
         match expr with
-        | ValueBool o when (o :?> bool) ->
-            Some expr
-        | _ -> None
+        | ValueBool o when o ->
+            ValueSome()
+        | _ -> ValueNone
 
+    [<return: Struct>]
     let inline internal (|False'|_|) expr =
         match expr with
-        | ValueBool o when not (o :?> bool) ->
-            Some expr
-        | _ -> None
+        | ValueBool o when not o ->
+            ValueSome()
+        | _ -> ValueNone
 
     let inline internal (|Or'|_|) (e:Expression) =
         match e.NodeType, e with
@@ -270,10 +272,10 @@ module Methods =
         | noHit -> noHit
 
     let annihilate = function
-        | And' (False' f, _)
-        | And' (_, False' f) -> f
-        | Or' (True' t, _) 
-        | Or' (_, True' t) -> t
+        | And' (False' _, _)
+        | And' (_, False' _) -> Expression.Constant(false, typeof<bool>) :> Expression
+        | Or' (True' _, _) 
+        | Or' (_, True' _) -> Expression.Constant(true, typeof<bool>) :> Expression
         | noHit -> noHit
 
     let absorb = function
