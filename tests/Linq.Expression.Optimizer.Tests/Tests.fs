@@ -494,19 +494,35 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
 
     [<Xunit.Fact>]
     member test.``evaluate expression should match with replacement``() = 
+
+        //let Or' (a, b) = Expression.OrElse(a, b) :> Expression
+        //let Not' x = Expression.Not(x) :> Expression
+        //let And' (a, b) = Expression.AndAlso(a, b) :> Expression
+        //let False' x = 
+        //    Expression.Parameter(typeof<bool>, x+"f") // Expression.Constant(false, typeof<bool>) :> Expression
+        //let True' x = 
+        //    Expression.Parameter(typeof<bool>, x+"t")// Expression.Constant(true, typeof<bool>) :> Expression
+
+        //let testNotChanges (e1,e2) =
+        //    let wrapped = Expression.OrElse(e1,e2)
+        //    let opt = wrapped.Optimize()
+        //    should equal (wrapped.ToString()) (opt.ToString())
+
+
         let Or' (a, b) = a || b
         let Not' = (not)
         let And' (a, b) = a && b
-        let False' x = false
-        let True' x = true
+        let False' _ = false
+        let True' _ = true
+        
 
-        for u in [true; false] do //u as underscore
-        for p in [true; false] do
-         for p1 in [true; false] do
-          for p2 in [true; false] do
-           for p3 in [true; false] do
-            for p4 in [true; false] do
-             for p5 in [true; false] do
+        for u in [True' "u"; False' "u"] do //u as underscore
+        for p in [True' "p"; False' "p"] do
+         for p1 in [True' "p1"; False' "p1"] do
+          for p2 in [True' "p2"; False' "p2"] do
+           for p3 in [True' "p3"; False' "p3"] do
+            for p4 in [True' "p4"; False' "p4"] do
+             for p5 in [True' "p5"; False' "p5"] do
 
                // Sequences taken from source
 
@@ -529,6 +545,61 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
                    let replacement = p || (p1 && p3)
                    should equal absorb replacement
 
+
+               let commute_absorb =
+                   let wrap1 = And'
+                   let wrap2 = Or'
+
+                   for u2 in [true; false] do //u as underscore
+
+                       if (p = p1) then
+                            let pRep1 exp =
+                                let replacement = p
+                                wrap1 exp |> should equal replacement
+                            pRep1 (Or'(u,Or'(p,u2)), p1)
+                            pRep1 (Or'(Or'(p,u2), u), p1)
+                            pRep1 (Or'(u,Or'(u2,p)), p1)
+                            pRep1 (Or'(Or'(u2,p), u), p1)
+                            pRep1 (p1, Or'(Or'(p,u2), u))
+                            pRep1 (p1, Or'(u,Or'(p,u2))) 
+                            pRep1 (p1, Or'(Or'(u2,p), u))
+                            pRep1 (p1, Or'(u,Or'(u2,p))) 
+
+                            let pRep2 exp =
+                                let replacement = p && p2
+                                wrap1 exp |> should equal replacement
+
+                            pRep2 (p, And'(p2,(Or'(p1,u))))
+                            pRep2 (p, And'(p2,(Or'(u,p1))))
+                            pRep2 (And'(p2,(Or'(p1,u))), p)
+                            pRep2 (And'(p2,(Or'(u,p1))), p)
+                            pRep2 (p, And'((Or'(p1,u)),p2))
+                            pRep2 (p, And'((Or'(u,p1)),p2))
+                            pRep2 (And'((Or'(p1,u)),p2), p)
+                            pRep2 (And'((Or'(u,p1)),p2), p)
+
+                            let pRep3 exp =
+                                let replacement = p || p2
+                                wrap2 exp |> should equal replacement
+
+                            pRep3 (p, Or'(p2, And' (p1, u)))
+                            pRep3 (p, Or'(p2, And' (u, p1)))
+                            pRep3 (p, Or'(And' (p1, u), p2))
+                            pRep3 (p, Or'(And' (u, p1), p2))
+                            pRep3 (Or'(And' (p1, u), p2), p)
+                            pRep3 (Or'(And' (u, p1), p2), p)
+                            pRep3 (Or'(p2, And' (p1, u)), p)
+                            pRep3 (Or'(p2, And' (u, p1)), p)
+                            pRep3 (Or'(p, p2), And' (p1, u))
+                            pRep3 (Or'(p, p2), And' (u, p1))
+                            pRep3 (And' (p1, u), Or'(p, p2))
+                            pRep3 (And' (p1, u), Or'(p2, p))
+                            pRep3 (And' (u, p1), Or'(p, p2))
+                            pRep3 (And' (u, p1), Or'(p2, p))
+                            pRep3 (Or'(p2, p), And' (p1, u))
+                            pRep3 (Or'(p2, p), And' (u, p1))
+                    
+                            ()
                let distribute_complement =
 
                    let wrap1 = And'
@@ -557,135 +628,76 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
                         testTrue (Or'(Not' p, p2), And'(Not' p4, p1))
                         testTrue (Or'(Not' p, p2), And'(Not' p4, p1))
 
-                   let testNotp4 exp =
-                       let replacement = not p4
+                   let testNotp2 exp =
+                       let replacement = not p2
                        wrap2 exp |> should equal replacement
 
                    if (p = p1 && p2 = p4) then
                    
-                       testNotp4 (Not'(Or'(p, p2)), And'(p1, Not' p4))
-                       testNotp4 (Not'(Or'(p2, p)), And'(p1, Not' p4))
-                       testNotp4 (And'(p1, Not' p4), Not'(Or'(p, p2)))
-                       testNotp4 (And'(p1, Not' p4), Not'(Or'(p2, p)))
-                       testNotp4 (Not'(Or'(p, p2)), And'(Not' p4, p1))
-                       testNotp4 (Not'(Or'(p2, p)), And'(Not' p4, p1))
-                       testNotp4 (And'(Not' p4, p1), Not'(Or'(p, p2)))
-                       testNotp4 (And'(Not' p4, p1), Not'(Or'(p2, p)))
+                       testNotp2 (Not'(Or'(p, p2)), And'(p1, Not' p4))
+                       testNotp2 (Not'(Or'(p2, p)), And'(p1, Not' p4))
+                       testNotp2 (And'(p1, Not' p4), Not'(Or'(p, p2)))
+                       testNotp2 (And'(p1, Not' p4), Not'(Or'(p2, p)))
+                       testNotp2 (Not'(Or'(p, p2)), And'(Not' p4, p1))
+                       testNotp2 (Not'(Or'(p2, p)), And'(Not' p4, p1))
+                       testNotp2 (And'(Not' p4, p1), Not'(Or'(p, p2)))
+                       testNotp2 (And'(Not' p4, p1), Not'(Or'(p2, p)))
 
-                   if (p = p1 && p = p3) then
-                        testTrue (Or' (p, And' (Not' p1, u)), Or'(Not' p3, u))
-                        testTrue (Or' (p, And' (u, Not' p1)), Or'(Not' p3, u))
-                        testTrue (Or' (And' (Not' p1, u), p), Or'(Not' p3, u))
-                        testTrue (Or' (p, And' (Not' p1, u)), Or'(u, Not' p3))
-                        testTrue (Or' (p, And' (u, Not' p1)), Or'(u, Not' p3))
-                        testTrue (Or' (And' (Not' p1, u), p), Or'(u, Not' p3))
-                        testTrue (Or' (And' (u, Not' p1), p), Or'(Not' p3, u))
-                        testTrue (Or' (And' (u, Not' p1), p), Or'(u, Not' p3))
-                        testTrue (Or'(Not' p3, u), Or' (p, And' (Not' p1, u)))
-                        testTrue (Or'(Not' p3, u), Or' (p, And' (u, Not' p1)))
-                        testTrue (Or'(Not' p3, u), Or' (And' (Not' p1, u), p))
-                        testTrue (Or'(Not' p3, u), Or' (And' (u, Not' p1), p))
-                        testTrue (Or'(u, Not' p3), Or' (p, And' (Not' p1, u)))
-                        testTrue (Or'(u, Not' p3), Or' (p, And' (u, Not' p1)))
-                        testTrue (Or'(u, Not' p3), Or' (And' (Not' p1, u), p))
-                        testTrue (Or'(u, Not' p3), Or' (And' (u, Not' p1), p))
-                   if (p = p1 && p2 = p4 && p2 = p5) then
-                        testTrue (p5, Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)))
-                        testTrue (p5, Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)))
-                        testTrue (p5, Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)))
-                        testTrue (p5, Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)))
-                        testTrue (p5, Or'(And'(p1, Not' p4), Not'(Or'(p, p2))))
-                        testTrue (p5, Or'(And'(p1, Not' p4), Not'(Or'(p2, p))))
-                        testTrue (p5, Or'(And'(Not' p4, p1), Not'(Or'(p, p2))))
-                        testTrue (p5, Or'(And'(Not' p4, p1), Not'(Or'(p2, p))))
-                        testTrue (Or'(Not'(Or'(p, p2)), And'(p1, Not' p4)), p5)
-                        testTrue (Or'(Not'(Or'(p2, p)), And'(p1, Not' p4)), p5)
-                        testTrue (Or'(Not'(Or'(p, p2)), And'(Not' p4, p1)), p5)
-                        testTrue (Or'(Not'(Or'(p2, p)), And'(Not' p4, p1)), p5)
-                        testTrue (Or'(Not'(Or'(p, p2)), p5), And'(p1, Not' p4))
-                        testTrue (Or'(Not'(Or'(p2, p)), p5), And'(p1, Not' p4))
-                        testTrue (Or'(Not'(Or'(p, p2)), p5), And'(Not' p4, p1))
-                        testTrue (Or'(Not'(Or'(p2, p)), p5), And'(Not' p4, p1))
-                        testTrue (Or'(And'(p1, Not' p4), p5), Not'(Or'(p, p2)))
-                        testTrue (Or'(And'(p1, Not' p4), p5), Not'(Or'(p2, p)))
-                        testTrue (Or'(And'(Not' p4, p1), p5), Not'(Or'(p, p2)))
-                        testTrue (Or'(And'(Not' p4, p1), p5), Not'(Or'(p2, p)))
+                   if (p = p1) then
+                        for u2 in [true; false] do //u as underscore
 
-                   if (p = p1 && p2 = p3) then
-                        let testReplace exp =
-                            let replacement = not p2
-                            wrap2 exp |> should equal replacement
+                            testTrue (Or'(p, u), Or'(Not' p1, u2))
+                            testTrue (Or'(u, p), Or'(Not' p1, u2))
+                            testTrue (Or'(p, u), Or'(u2, Not' p1))
+                            testTrue (Or'(u, p), Or'(u2, Not' p1))
+                            testTrue (Or'(Not' p1, u2), Or'(p, u))
+                            testTrue (Or'(Not' p1, u2), Or'(u, p))
+                            testTrue (Or'(u2, Not' p1), Or'(p, u))
+                            testTrue (Or'(u2, Not' p1), Or'(u, p))
 
-                        testReplace (And'(Not' p, Not' p2), And'(p1, Not' p3))
-                        testReplace (And'(Not' p2, Not' p), And'(p1, Not' p3))
-                        testReplace (And'(Not' p, Not' p2), And'(Not' p3, p1))
-                        testReplace (And'(Not' p2, Not' p), And'(Not' p3, p1))
-                        testReplace (And'(p1, Not' p3), And'(Not' p, Not' p2))
-                        testReplace (And'(p1, Not' p3), And'(Not' p2, Not' p))
-                        testReplace (And'(Not' p3, p1), And'(Not' p, Not' p2))
-                        testReplace (And'(Not' p3, p1), And'(Not' p2, Not' p))
+                   let tesOrRepl exp =
+                       let replacement = p || p4 || not p3
+                       wrap2 exp |> should equal replacement
 
-                   if (p = p1 && p = p2) then
-                        let testReplace exp =
-                            let replacement = (not p3) || p4 || p
-                            wrap2 exp |> should equal replacement
+                   if (p = p1) then
 
-                        testReplace (Or'(Not'(Or'(p3, p2)), And'(p4, Not' p1)), p)
-                        testReplace (Or'(Not'(Or'(p2, p3)), And'(p4, Not' p1)), p)
-                        testReplace (Or'(Not'(Or'(p3, p2)), And'(Not' p1, p4)), p)
-                        testReplace (Or'(Not'(Or'(p2, p3)), And'(Not' p1, p4)), p)
-                        testReplace (Or'(Not'(Or'(p3, p2)), p), And'(p4, Not' p1))
-                        testReplace (Or'(Not'(Or'(p2, p3)), p), And'(p4, Not' p1))
-                        testReplace (Or'(Not'(Or'(p3, p2)), p), And'(Not' p1, p4))
-                        testReplace (Or'(Not'(Or'(p2, p3)), p), And'(Not' p1, p4))
-                        testReplace (Or'(And'(p4, Not' p1), Not'(Or'(p3, p2))), p)
-                        testReplace (Or'(And'(p4, Not' p1), Not'(Or'(p2, p3))), p)
-                        testReplace (Or'(And'(Not' p1, p4), Not'(Or'(p3, p2))), p)
-                        testReplace (Or'(And'(Not' p1, p4), Not'(Or'(p2, p3))), p)
-                        testReplace (Or'(And'(p4, Not' p1), p), Not'(Or'(p3, p2)))
-                        testReplace (Or'(And'(p4, Not' p1), p), Not'(Or'(p2, p3)))
-                        testReplace (Or'(And'(Not' p1, p4), p), Not'(Or'(p3, p2)))
-                        testReplace (Or'(And'(Not' p1, p4), p), Not'(Or'(p2, p3)))
-                        testReplace (p, Or'(Not'(Or'(p3, p2)), And'(p4, Not' p1)))
-                        testReplace (p, Or'(Not'(Or'(p2, p3)), And'(p4, Not' p1)))
-                        testReplace (p, Or'(Not'(Or'(p3, p2)), And'(Not' p1, p4)))
-                        testReplace (p, Or'(Not'(Or'(p2, p3)), And'(Not' p1, p4)))
-                        testReplace (Or'(p, Not'(Or'(p3, p2))), And'(p4, Not' p1))
-                        testReplace (Or'(p, Not'(Or'(p2, p3))), And'(p4, Not' p1))
-                        testReplace (Or'(p, Not'(Or'(p3, p2))), And'(Not' p1, p4))
-                        testReplace (Or'(p, Not'(Or'(p2, p3))), And'(Not' p1, p4))
-                        testReplace (p, Or'(And'(p4, Not' p1), Not'(Or'(p3, p2))))
-                        testReplace (p, Or'(And'(p4, Not' p1), Not'(Or'(p2, p3))))
-                        testReplace (p, Or'(And'(Not' p1, p4), Not'(Or'(p3, p2))))
-                        testReplace (p, Or'(And'(Not' p1, p4), Not'(Or'(p2, p3))))
-                        testReplace (Or'(p, And'(p4, Not' p1)), Not'(Or'(p3, p2)))
-                        testReplace (Or'(p, And'(p4, Not' p1)), Not'(Or'(p2, p3)))
-                        testReplace (Or'(p, And'(Not' p1, p4)), Not'(Or'(p3, p2)))
-                        testReplace (Or'(p, And'(Not' p1, p4)), Not'(Or'(p2, p3)))
+                       tesOrRepl (Or'(Not' p3, p), And'(p4, Not' p1))
+                       tesOrRepl (Or'(p, Not' p3), And'(p4, Not' p1))
+                       tesOrRepl (Or'(Not' p3, p), And'(Not' p1, p4))
+                       tesOrRepl (Or'(p, Not' p3), And'(Not' p1, p4))
+                       tesOrRepl (And'(p4, Not' p1), Or'(Not' p3, p))
+                       tesOrRepl (And'(p4, Not' p1), Or'(p, Not' p3))
+                       tesOrRepl (And'(Not' p1, p4), Or'(Not' p3, p))
+                       tesOrRepl (And'(Not' p1, p4), Or'(p, Not' p3))
 
-                   let testRepl exp =
-                        let replacement = (not p1) && (not p2) && (not p4 || p5)
-                        wrap2 exp |> should equal replacement
+                   let testRepl2 exp =
+                       let replacement = (not p) && ((not p3) || p4)
+                       wrap2 exp |> should equal replacement
 
-                   if p2 = p3 && p1 = p then
+                   if (p = p1) then
+                         testRepl2 (Not'(Or'(p, p3)), And'(p4, Not' p1))
+                         testRepl2 (Not'(Or'(p, p3)), And'(Not' p1, p4))
+                         testRepl2 (And'(Not' p1, p4), Not'(Or'(p3, p)))
+                         testRepl2 (And'(Not' p1, p4), Not'(Or'(p, p3)))
+                         testRepl2 (Not'(Or'(p3, p)), And'(Not' p1, p4))
+                         testRepl2 (Not'(Or'(p3, p)), And'(p4, Not' p1))
+                         testRepl2 (And'(p4, Not' p1), Not'(Or'(p3, p)))
+                         testRepl2 (And'(p4, Not' p1), Not'(Or'(p, p3)))
 
-                        testRepl (Not'(Or'(Or'(p2, p4), p1)), And'(And'(p5, Not' p3), Not' p))
-                        testRepl (Not'(Or'(Or'(p2, p4), p1)), And'(And'(Not' p3, p5), Not' p))
-                        testRepl (Not'(Or'(Or'(p2, p4), p1)), And'(Not' p, And'(p5, Not' p3)))
-                        testRepl (Not'(Or'(Or'(p2, p4), p1)), And'(Not' p, And'(Not' p3, p5)))
-                        testRepl (And'(And'(Not' p3, p5), Not' p), Not'(Or'(Or'(p4, p2), p1)))
-                        testRepl (And'(And'(Not' p3, p5), Not' p), Not'(Or'(Or'(p2, p4), p1)))
-                        testRepl (And'(Not' p, And'(p5, Not' p3)), Not'(Or'(Or'(p4, p2), p1)))
-                        testRepl (And'(Not' p, And'(p5, Not' p3)), Not'(Or'(Or'(p2, p4), p1)))
-                        testRepl (And'(Not' p, And'(Not' p3, p5)), Not'(Or'(Or'(p4, p2), p1)))
-                        testRepl (And'(Not' p, And'(Not' p3, p5)), Not'(Or'(Or'(p2, p4), p1)))
-                        testRepl (Not'(Or'(Or'(p4, p2), p1)), And'(And'(p5, Not' p3), Not' p))
-                        testRepl (Not'(Or'(Or'(p4, p2), p1)), And'(And'(Not' p3, p5), Not' p))
-                        testRepl (Not'(Or'(Or'(p4, p2), p1)), And'(Not' p, And'(p5, Not' p3)))
-                        testRepl (Not'(Or'(Or'(p4, p2), p1)), And'(Not' p, And'(Not' p3, p5)))
-                        testRepl (And'(And'(p5, Not' p3), Not' p), Not'(Or'(Or'(p4, p2), p1)))
-                        testRepl (And'(And'(p5, Not' p3), Not' p), Not'(Or'(Or'(p2, p4), p1)))
+                   let testRepl3 exp =
+                       let replacement = p || p2 || not p3
+                       wrap2 exp |> should equal replacement
 
+                   if (p = p1) then
+                          
+                         testRepl3 (Or'(p, p2), Not'(Or'(p3, p1)))
+                         testRepl3 (Or'(p, p2), Not'(Or'(p1, p3)))
+                         testRepl3 (Not'(Or'(p1, p3)), Or'(p, p2))
+                         testRepl3 (Not'(Or'(p1, p3)), Or'(p2, p))
+                         testRepl3 (Or'(p2, p), Not'(Or'(p3, p1)))
+                         testRepl3 (Or'(p2, p), Not'(Or'(p1, p3)))
+                         testRepl3 (Not'(Or'(p3, p1)), Or'(p, p2))
+                         testRepl3 (Not'(Or'(p3, p1)), Or'(p2, p))
 
                    ()
                let associate_complement =
@@ -695,6 +707,11 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
                        let test1 exp =
                             let replacement = p && (not p2)
                             wrap1 exp |> should equal replacement
+
+                       //let test1 (e1,e2) =
+                       //    let wrapped = Expression.And(e1,e2)
+                       //    should equal (wrapped.ToString()) (wrapped.Optimize().ToString())
+
                        test1 (Not' (And' (p, p2)), p1)
                        test1 (Not' (And' (p2, p)), p1)
                        test1 (p1, Not' (And' (p, p2)))
