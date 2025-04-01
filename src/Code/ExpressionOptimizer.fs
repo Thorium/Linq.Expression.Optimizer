@@ -214,22 +214,24 @@ module Methods =
             ValueSome()
         | _ -> ValueNone
 
+    // In ideal world "OrElse" is order-dependent: (x <> null || x.Prop)
+    // and "Or" is not order-dependent: (isNull x || isNull y)
     let inline internal (|Or'|_|) (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.OrElse, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
         | ExpressionType.Or, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
-        | ExpressionType.Conditional, IfThenElse (left, True' _, right) ->
-            Some (left, right)
-        //| ExpressionType.Or, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
+        | ExpressionType.Conditional, IfThenElse (left, True', right) -> //if A then true else B
+            Some (left, right) 
         | _ -> None
 
+    // In ideal world "AndAlso" is order-dependent: (isNull x && x.Prop)
+    // and "And" is not order-dependent: (isNull x && isNull y)
     let inline internal (|And'|_|) (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.AndAlso, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
         | ExpressionType.And, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
-        | ExpressionType.Conditional, IfThenElse (left, right, False' _) ->
+        | ExpressionType.Conditional, IfThenElse (left, right, False') -> //if A then B else true
             Some (left, right)
-        //| ExpressionType.And, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
         | _ -> None
 
     /// Not in use, would cause looping...
