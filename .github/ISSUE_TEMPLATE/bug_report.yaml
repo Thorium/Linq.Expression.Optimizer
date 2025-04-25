@@ -1,0 +1,53 @@
+name: Bug report
+description: Create a report to help us improve
+title: "[Bug]: "
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is. If applicable, add screenshots to help explain your problem.
+    validations:
+      required: true
+  - type: textarea
+    id: repro-steps
+    attributes:
+      label: To Reproduce
+      description: Steps to reproduce the behavior
+      value: |
+        1. Go to '...'
+        2. Click on '...'
+        3. Scroll down to '...'
+        4. See error
+      render: shell
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: A clear and concise description of what you expected to happen.
+      render: shell
+  - type: textarea
+    id: desktop-info
+    attributes:
+      label: Desktop
+      value: |
+        - OS: [e.g. Windows 11]
+        - Browser: [e.g. Chrome, Edge]
+        - Version: [e.g. 122]
+      render: shell
+  - type: textarea
+    id: smartphone-info
+    attributes:
+      label: Smartphone
+      value: |
+        - Device: [e.g. iPhone 15]
+        - OS: [e.g. iOS 17.4]
+        - Browser: [e.g. Stock browser, Safari]
+        - Version: [e.g. 122]
+      render: shell
+  - type: textarea
+    id: additional-ctx
+    attributes:
+      label: Additional context
+      description: Add any other context about the problem here.
+      render: shell
