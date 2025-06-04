@@ -31,8 +31,8 @@ dependencies
   framework: net8
     FSharp.Core >= 8.0.301
 files
-    ../../src/Linq.Expression.Optimizer/bin/Release/Linq.Expression.Optimizer.dll ==> lib/net472
-    ../../src/Linq.Expression.Optimizer/bin/Release/Linq.Expression.Optimizer.xml ==> lib/net472
+    ../../src/Linq.Expression.Optimizer/bin/Release/Linq.Expression.Optimizer.dll ==> lib/net481
+    ../../src/Linq.Expression.Optimizer/bin/Release/Linq.Expression.Optimizer.xml ==> lib/net481
     ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard2.0/Linq.Expression.Optimizer.deps.json ==> lib/netstandard2.0
     ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard2.0/Linq.Expression.Optimizer.dll ==> lib/netstandard2.0
     ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard2.0/Linq.Expression.Optimizer.xml ==> lib/netstandard2.0	

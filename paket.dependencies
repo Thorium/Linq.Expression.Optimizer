@@ -17,8 +17,10 @@ group Test
   source https://nuget.org/api/v2
   framework >= 4.0
   
+  nuget xUnit
   nuget FsCheck.Xunit
   nuget FsUnit.xUnit
   nuget xunit.runner.visualstudio >= 2.0 version_in_path: true
   nuget xunit.runner.console
   nuget BenchmarkDotNet
+  nuget xunit.assert
