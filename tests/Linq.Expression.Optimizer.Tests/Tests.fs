@@ -264,7 +264,7 @@ module Queries =
         let optimized = ExpressionOptimizer.visit(expr)
         let o = optimized.ToString()
         let o2 = o.ToString()
-        printfn "%s" o2
+        printfn "%s: %s" (qry.ToString().Replace("<StartupCode$Linq-Expression-Optimizer-Tests>.$Tests+", "")) o2
         should lessThan (expr.ToString().Length) (optimized.ToString().Length)
 
     let testLteq (xs:int[]) qry = 
