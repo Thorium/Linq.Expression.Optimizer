@@ -23,13 +23,13 @@ description
     Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For side-effect free Expressions. No compilation-subjective optimizations.
 dependencies
   framework: net481
-    FSharp.Core >= 8.0.200
-  framework: net472
-    FSharp.Core >= 8.0.200
+    FSharp.Core >= 8.0.301
   framework: netstandard20
-    FSharp.Core >= 8.0.200
+    FSharp.Core >= 8.0.301
   framework: netstandard21
-    FSharp.Core >= 8.0.200
+    FSharp.Core >= 8.0.301
+  framework: net8
+    FSharp.Core >= 8.0.301
 files
     ../../src/Linq.Expression.Optimizer/bin/Release/Linq.Expression.Optimizer.dll ==> lib/net472
     ../../src/Linq.Expression.Optimizer/bin/Release/Linq.Expression.Optimizer.xml ==> lib/net472
@@ -38,4 +38,8 @@ files
     ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard2.0/Linq.Expression.Optimizer.xml ==> lib/netstandard2.0	
     ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard2.1/Linq.Expression.Optimizer.deps.json ==> lib/netstandard2.1
     ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard2.1/Linq.Expression.Optimizer.dll ==> lib/netstandard2.1
-    ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard2.1/Linq.Expression.Optimizer.xml ==> lib/netstandard2.1	
+    ../../src/Linq.Expression.Optimizer.standard/bin/Release/netstandard2.1/Linq.Expression.Optimizer.xml ==> lib/netstandard2.1
+
+    ../../src/Linq.Expression.Optimizer.standard/bin/Release/net8.0/Linq.Expression.Optimizer.deps.json ==> lib/net8.0
+    ../../src/Linq.Expression.Optimizer.standard/bin/Release/net8.0/Linq.Expression.Optimizer.dll ==> lib/net8.0
+    ../../src/Linq.Expression.Optimizer.standard/bin/Release/net8.0/Linq.Expression.Optimizer.xml ==> lib/net8.0

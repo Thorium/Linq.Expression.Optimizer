@@ -1,3 +1,7 @@
+### 1.0.30 - 04/06/2025
+* FSharp.Core dependency update
+* Minor performance optimisation
+
 ### 1.0.29 - 31/03/2025
 * Further Improved boolean algebra optimisation
 * Initial implementation of "remove duplicate condition", "remove mutually exclusive condition"

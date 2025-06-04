@@ -1,7 +1,7 @@
 NUGET
   remote: https://www.nuget.org/api/v2
     FSharp.Compiler.Tools (10.2.3)
-    FSharp.Core (8.0.200)
+    FSharp.Core (8.0.301)
     FSharp.NET.Sdk (1.0.5)
       FSharp.Compiler.Tools (>= 4.1.17) - restriction: || (>= net40) (>= netstandard1.3)
 
@@ -556,7 +556,7 @@ NUGET
     FsCheck.Xunit (2.11)
       FsCheck (2.11) - restriction: >= net452
       xunit.extensibility.execution (>= 2.2 < 3.0) - restriction: >= net452
-    FSharp.Core (8.0.200) - restriction: || (&& (>= net40) (>= netstandard2.0)) (>= net452)
+    FSharp.Core (8.0.301) - restriction: || (&& (>= net40) (>= netstandard2.0)) (>= net452)
     FsUnit.xUnit (3.2)
       FSharp.Core (>= 4.2.3) - restriction: || (&& (>= net40) (>= netstandard2.0)) (>= net46)
       NHamcrest (>= 2.0.1 < 2.1) - restriction: || (&& (>= net40) (>= netstandard2.0)) (>= net46)

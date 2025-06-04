@@ -84,7 +84,6 @@ module Methods =
             | _ -> e
         | _ -> e
 
-
     /// Purpose of this is to replace non-used anonymous types:
     /// new AnonymousObject(Item1 = x, Item2 = "").Item1    -->   x
     let ``remove AnonymousType`` (e:Expression) =
@@ -92,7 +91,8 @@ module Methods =
         match e.NodeType, e with
         //FShap anonymous type:
         | ExpressionType.MemberAccess, ( :? MemberExpression as me)
-            when me.Member.DeclaringType.Name.ToUpper().StartsWith("ANONYMOUSOBJECT") || me.Member.DeclaringType.Name.ToUpper().StartsWith "TUPLE" ->
+            when me.Member.DeclaringType.Name.ToUpper().StartsWith("ANONYMOUSOBJECT") 
+                || (me.Member.DeclaringType.IsGenericType && (me.Member.DeclaringType.GetGenericTypeDefinition() = typedefof<Tuple<_>> || me.Member.DeclaringType.GetGenericTypeDefinition() = typedefof<ValueTuple<_>>)) ->
                 let memberIndex = 
                     if me.Member.Name.StartsWith("Item") && me.Member.Name.Length > 4 then
 #if NETSTANDARD21
@@ -110,7 +110,7 @@ module Methods =
                 | _ -> e
         //CSharp anonymous type:
         | ExpressionType.MemberAccess, ( :? MemberExpression as me)
-            when me.Member.DeclaringType.Name.ToUpper().StartsWith("<>F__ANONYMOUSTYPE") || me.Member.DeclaringType.Name.ToUpper().StartsWith "TUPLE" ->
+            when me.Member.DeclaringType.Name.ToUpper().StartsWith("<>F__ANONYMOUSTYPE") || (me.Member.DeclaringType.IsGenericType && (me.Member.DeclaringType.GetGenericTypeDefinition() = typedefof<Tuple<_>> || me.Member.DeclaringType.GetGenericTypeDefinition() = typedefof<ValueTuple<_>>)) ->
                 match me.Expression.NodeType, me.Expression, me.Member with 
                 | ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when not(isNull ne.Arguments || isNull p) -> 
                         let selected = ne.Arguments |> Seq.tryPick(function
