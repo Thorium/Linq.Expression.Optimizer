@@ -1,6 +1,6 @@
-### 1.0.30 - 04/06/2025
+### 1.0.31 - 04/06/2025
 * FSharp.Core dependency update
-* Minor performance optimisation
+* NET8.0 target added
 
 ### 1.0.29 - 31/03/2025
 * Further Improved boolean algebra optimisation
