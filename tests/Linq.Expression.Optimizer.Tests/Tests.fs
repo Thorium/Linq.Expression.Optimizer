@@ -56,9 +56,12 @@ module Queries =
             if startposW = 5 then 
                 0 
             else
-                let endposW = o.IndexOf(").", startposW)
+                let endposW = o.IndexOf(").Select", startposW)
                 if endposW = -1 then 
-                    o.LastIndexOf(")") - startposW
+                    let endposW2 = o.IndexOf(").", startposW)
+                    if endposW2 = -1 then 
+                        o.LastIndexOf(")") - startposW
+                    else endposW2 - startposW
                 else endposW - startposW
         let selectLength = 
             let startposS = o.LastIndexOf(".Select(") + 7
@@ -243,7 +246,7 @@ module Queries =
         query{
             for (i,a,b) in arr2.AsQueryable() do
             where (b || (not a && not b) || (a && not b))
-            select i
+            select (i+0)
         }
 
     let qry20 (arr:int list) =
@@ -429,13 +432,13 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
     member test.``qry14 optimized select where``() = 
         let exp = optQry qry14
         output.WriteLine (exp.ToString())
-        testLength 10 18 exp
+        testLength 165 18 exp
 
     [<Xunit.Fact>]
     member test.``qry15 optimized select where``() = 
         let exp = optQry qry15
         output.WriteLine (exp.ToString())
-        testLength 24 7 exp
+        testLength 10 7 exp
 
     [<Xunit.Fact>]
     member test.``qry17 optimized select where``() = 
@@ -447,7 +450,7 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
     member test.``qry18 optimized select where``() = 
         let exp = optQry qry18
         output.WriteLine (exp.ToString())
-        testLength 21 7 exp
+        testLength 109 7 exp
 
     [<Xunit.Fact>]
     member test.``qry19 optimized select where``() = 

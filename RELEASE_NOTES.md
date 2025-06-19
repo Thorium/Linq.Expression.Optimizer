@@ -1,3 +1,7 @@
+### 1.0.32 - 19/06/2025
+* Known null.hasValue is always false
+* X times zero equals zero
+
 ### 1.0.31 - 04/06/2025
 * FSharp.Core dependency update
 * NET8.0 target added

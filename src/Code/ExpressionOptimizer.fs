@@ -46,14 +46,15 @@ module Methods =
                      //Expression.Lambda(parentExpr).Compile().DynamicInvoke(null) |> getCorrectType
 
                      let myVal = 
-                         match parentExpr with
-                         | :? MemberExpression as mainNode ->
+                         match parentExpr.NodeType, parentExpr with
+                         | ExpressionType.MemberAccess, (:? MemberExpression as mainNode) ->
                              match mainNode.Member with
                              | :? FieldInfo as fieldInfo when not(isNull(fieldInfo)) ->
                                 fieldInfo.GetValue ce.Value
                              | :? PropertyInfo as propInfo when not(isNull(propInfo)) ->
                                 propInfo.GetValue(ce.Value, null)
                              | _ -> ce.Value
+                         // UnaryExpression convert
                          | _ -> ce.Value
                      myVal |> getCorrectType
                 | x -> x
@@ -291,8 +292,8 @@ module Methods =
     let idempotence = function
         | And' (p, p1) when propertyMatch p p1 -> p
         | Or' (p, p1)  when propertyMatch p p1 -> p
-        | Not'(And' (p, p1)) when propertyMatch p p1 -> Expression.Not(p)
-        | Not'(Or' (p, p1))  when propertyMatch p p1 -> Expression.Not(p)
+        | Not'(And' (p, p1)) when propertyMatch p p1 -> Expression.Not(p) :> Expression
+        | Not'(Or' (p, p1))  when propertyMatch p p1 -> Expression.Not(p) :> Expression
         | noHit -> noHit
 
     let complement = function
@@ -324,7 +325,7 @@ module Methods =
             | (p, And'((Or'(_,p1)),p2)) 
             | (And'((Or'(p1,_)),p2), p) 
             | (And'((Or'(_,p1)),p2), p) 
-                when propertyMatch p p1  -> Expression.AndAlso(p,p2)
+                when propertyMatch p p1  -> Expression.AndAlso(p,p2) :> Expression
             | _ -> exp
         | Or' (innercontent) ->
             match innercontent with
@@ -333,17 +334,17 @@ module Methods =
             | (p, Or'(And' (p1, _), p2))
             | (p, Or'(And' (_, p1), p2)) 
             | (Or'(And' (p1, _), p2), p)
-            | (Or'(And' (_, p1), p2), p) when propertyMatch p p1 -> Expression.OrElse(p,p2)
+            | (Or'(And' (_, p1), p2), p) when propertyMatch p p1 -> Expression.OrElse(p,p2) :> Expression
             | (Or'(p2, And' (p1, _)), p)
-            | (Or'(p2, And' (_, p1)), p) when propertyMatch p p1 -> Expression.OrElse(p2,p)
+            | (Or'(p2, And' (_, p1)), p) when propertyMatch p p1 -> Expression.OrElse(p2,p) :> Expression
             | (Or'(p, p2), And' (p1, _))
             | (Or'(p, p2), And' (_, p1))
             | (And' (p1, _), Or'(p, p2))
             | (And' (p1, _), Or'(p2, p))
             | (And' (_, p1), Or'(p, p2))
-            | (And' (_, p1), Or'(p2, p)) when propertyMatch p p1 -> Expression.OrElse(p,p2)
+            | (And' (_, p1), Or'(p2, p)) when propertyMatch p p1 -> Expression.OrElse(p,p2) :> Expression
             | (Or'(p2, p), And' (p1, _))
-            | (Or'(p2, p), And' (_, p1)) when propertyMatch p p1 -> Expression.OrElse(p2,p)
+            | (Or'(p2, p), And' (_, p1)) when propertyMatch p p1 -> Expression.OrElse(p2,p) :> Expression
             | _ -> exp
         | noHit -> noHit
 
@@ -423,11 +424,11 @@ module Methods =
             | (Or'(p, p2), Not'(Or'(p3, p1))) 
             | (Or'(p, p2), Not'(Or'(p1, p3))) 
             | (Not'(Or'(p1, p3)), Or'(p, p2)) 
-            | (Not'(Or'(p1, p3)), Or'(p2, p)) when (propertyMatch p p1) -> Expression.OrElse(p, Expression.OrElse(p2, Expression.Not p3))
+            | (Not'(Or'(p1, p3)), Or'(p2, p)) when (propertyMatch p p1) -> Expression.OrElse(p, Expression.OrElse(p2, Expression.Not p3)) :> Expression
             | (Or'(p2, p), Not'(Or'(p3, p1))) 
-            | (Or'(p2, p), Not'(Or'(p1, p3))) when (propertyMatch p p1) -> Expression.OrElse(p2, Expression.OrElse(p, Expression.Not p3))
+            | (Or'(p2, p), Not'(Or'(p1, p3))) when (propertyMatch p p1) -> Expression.OrElse(p2, Expression.OrElse(p, Expression.Not p3)) :> Expression
             | (Not'(Or'(p3, p1)), Or'(p, p2)) 
-            | (Not'(Or'(p3, p1)), Or'(p2, p)) when (propertyMatch p p1) -> Expression.OrElse(Expression.Not p3, Expression.OrElse(p, p2))
+            | (Not'(Or'(p3, p1)), Or'(p2, p)) when (propertyMatch p p1) -> Expression.OrElse(Expression.Not p3, Expression.OrElse(p, p2)) :> Expression
 
             | _ -> exp
             
@@ -625,7 +626,35 @@ module Methods =
             when not(isNull me || isNull me.Expression) -> 
                 match ``constant basic type`` me me.Expression with
                 | Some x -> Expression.Constant(x, me.Type) :> Expression
-                | _ -> e
+                | _ -> 
+                    // Known Null hasValue
+                    // Only null case can be identified: For the non-null, it still can be some call that results to null
+                    if Type.(=)(me.Type, typeof<bool>) &&  me.Expression.Type.IsGenericType then
+                        let ptype = me.Expression.Type.GetGenericTypeDefinition()
+                        if me.Member.Name = "HasValue" && ptype = typedefof<Nullable<_>> then 
+                            match me.Expression.NodeType, me.Expression with
+                            | ExpressionType.Constant, ( :? ConstantExpression as ce) when (isNull ce.Value) -> Expression.Constant(false, typeof<bool>) :> Expression
+                            | ExpressionType.Convert, ( :? UnaryExpression as ue) when ( 
+                                ue.Operand.NodeType = ExpressionType.Constant && isNull (ue.Operand :?> ConstantExpression).Value) -> Expression.Constant(false, typeof<bool>) :> Expression
+                            | _ -> e
+                        else e
+                    else e
+        | ExpressionType.Call, ( :? MethodCallExpression as me) when 
+                Type.(=)(me.Type, typeof<bool>) && not (isNull me.Method) && (me.Method.Name = "get_IsNone" || me.Method.Name = "get_IsSome") && 
+                    me.Arguments.Count = 1 && me.Arguments.[0].NodeType = ExpressionType.Constant && me.Arguments.[0].Type.IsGenericType ->
+            // Known option is none
+            // Only none/null case can be identified: For the non-null, it still can be some call that results to null
+            let cet = me.Arguments.[0] :?> ConstantExpression
+            if (not (isNull cet)) && isNull cet.Value then
+                let at = cet.Type.GetGenericTypeDefinition()
+                if at = typedefof<Option<_>> || at = typedefof<ValueOption<_>> then
+                    if me.Method.Name = "get_IsNone" then
+                        Expression.Constant(true, typeof<bool>) :> Expression
+                    else
+                        Expression.Constant(false, typeof<bool>) :> Expression
+                else e
+            else e
+                    
         | ExpressionType.MemberAccess, ( :? MemberExpression as me) 
             when (not(isNull me)) && isNull me.Expression && 
                     (me.Member.DeclaringType.Name.ToUpper().StartsWith("FSI_") 
@@ -673,6 +702,7 @@ module Methods =
                     | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (le.Type, typeof<UInt16>)  -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
                     | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>)    -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
                     | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>)   -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
+                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (le.Type, typeof<bigint>)  -> Expression.Constant(lstr + rstr, le.Type) :> Expression 
                     | _ -> e
                 | ExpressionType.Subtract
                 | ExpressionType.SubtractChecked -> 
@@ -689,6 +719,7 @@ module Methods =
                     | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (le.Type, typeof<UInt16>)  -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
                     | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>)    -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
                     | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>)   -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
+                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (le.Type, typeof<bigint>)   -> Expression.Constant(lstr - rstr, le.Type) :> Expression 
                     | _ -> e
                 | ExpressionType.Multiply
                 | ExpressionType.MultiplyChecked -> 
@@ -705,6 +736,7 @@ module Methods =
                     | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (le.Type, typeof<UInt16>)  -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
                     | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>)    -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
                     | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>)   -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
+                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (le.Type, typeof<bigint>)   -> Expression.Constant(lstr * rstr, le.Type) :> Expression 
                     | _ -> e
                 | ExpressionType.Divide -> 
                     match le.Value, ri.Value with
@@ -720,6 +752,7 @@ module Methods =
                     | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (le.Type, typeof<UInt16>)  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
                     | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>)    -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
                     | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>)   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (le.Type, typeof<bigint>)   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
                     | _ -> e
                 | ExpressionType.Modulo -> 
                     match le.Value, ri.Value with
@@ -735,6 +768,7 @@ module Methods =
                     | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (le.Type, typeof<UInt16>)  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
                     | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>)    -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
                     | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>)   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (le.Type, typeof<bigint>)   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
                     | _ -> e
                 | _ -> e
             | ExpressionType.Add, ExpressionType.Constant, (:? BinaryExpression as inner), (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Add ->
@@ -801,7 +835,75 @@ module Methods =
                     | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (irc.Type, typeof<UInt16>)  -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression 
                     | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (irc.Type, typeof<int8>)    -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression 
                     | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (irc.Type, typeof<uint8>)   -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression 
+                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (irc.Type, typeof<bigint>)  -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression 
                     | _ -> e
+                | _ -> e
+
+
+            | _, ExpressionType.Constant, le, (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Add || e.NodeType = ExpressionType.AddChecked ||  e.NodeType = ExpressionType.Subtract || e.NodeType = ExpressionType.SubtractChecked ->
+                match ri.Value with // x + 0 = x
+                | (:? decimal as riv) when riv = 0m  -> le
+                | (:? float32 as riv) when riv = 0.f -> le
+                | (:? double  as riv) when riv = 0.  -> le
+                | (:? float   as riv) when riv = 0.  -> le
+                | (:? Int32   as riv) when riv = 0   -> le
+                | (:? Int64   as riv) when riv = 0L  -> le
+                | (:? UInt32  as riv) when riv = 0u  -> le
+                | (:? UInt64  as riv) when riv = 0uL -> le
+                | (:? Int16   as riv) when riv = 0s  -> le
+                | (:? UInt16  as riv) when riv = 0us -> le
+                | (:? int8    as riv) when riv = 0y  -> le
+                | (:? uint8   as riv) when riv = 0uy -> le
+                | (:? bigint  as riv) when riv = 0I -> le
+                | _ -> e
+            | ExpressionType.Constant, _, (:? ConstantExpression as li), re when e.NodeType = ExpressionType.Add || e.NodeType = ExpressionType.AddChecked ||  e.NodeType = ExpressionType.Subtract || e.NodeType = ExpressionType.SubtractChecked ->
+                match li.Value with // 0 + x = x
+                | (:? decimal as liv) when liv = 0m  -> re
+                | (:? float32 as liv) when liv = 0.f -> re
+                | (:? double  as liv) when liv = 0.  -> re
+                | (:? float   as liv) when liv = 0.  -> re
+                | (:? Int32   as liv) when liv = 0   -> re
+                | (:? Int64   as liv) when liv = 0L  -> re
+                | (:? UInt32  as liv) when liv = 0u  -> re
+                | (:? UInt64  as liv) when liv = 0uL -> re
+                | (:? Int16   as liv) when liv = 0s  -> re
+                | (:? UInt16  as liv) when liv = 0us -> re
+                | (:? int8    as liv) when liv = 0y  -> re
+                | (:? uint8   as liv) when liv = 0uy -> re
+                | (:? bigint  as liv) when liv = 0I  -> re
+                | _ -> e
+
+            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked ->
+                match ri.Value with // x * 0 = 0
+                | (:? decimal as riv) when riv = 0m  -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? float32 as riv) when riv = 0.f -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? double  as riv) when riv = 0.  -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? float   as riv) when riv = 0.  -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? Int32   as riv) when riv = 0   -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? Int64   as riv) when riv = 0L  -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? UInt32  as riv) when riv = 0u  -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? UInt64  as riv) when riv = 0uL -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? Int16   as riv) when riv = 0s  -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? UInt16  as riv) when riv = 0us -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? int8    as riv) when riv = 0y  -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? uint8   as riv) when riv = 0uy -> Expression.Constant(riv, ri.Type) :> Expression
+                | (:? bigint   as riv) when riv = 0I -> Expression.Constant(riv, ri.Type) :> Expression
+                | _ -> e
+            | ExpressionType.Constant, _, (:? ConstantExpression as li), _ when e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked ->
+                match li.Value with // 0 * x = 0
+                | (:? decimal as liv) when liv = 0m  -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? float32 as liv) when liv = 0.f -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? double  as liv) when liv = 0.  -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? float   as liv) when liv = 0.  -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? Int32   as liv) when liv = 0   -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? Int64   as liv) when liv = 0L  -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? UInt32  as liv) when liv = 0u  -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? UInt64  as liv) when liv = 0uL -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? Int16   as liv) when liv = 0s  -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? UInt16  as liv) when liv = 0us -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? int8    as liv) when liv = 0y  -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? uint8   as liv) when liv = 0uy -> Expression.Constant(liv, li.Type) :> Expression
+                | (:? bigint  as liv) when liv = 0I  -> Expression.Constant(liv, li.Type) :> Expression
                 | _ -> e
             | _ -> e
         | _ -> e
