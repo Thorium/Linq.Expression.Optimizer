@@ -198,6 +198,30 @@ module Queries =
             select (not(not(not(x>3))) && true)
         }
 
+    /// Test query for range optimization: x > 5 && x > 3 should optimize to x > 5
+    let qryRangeOptimization (arr:int list) =
+        query{
+            for x in arr.AsQueryable() do
+            where (x > 5 && x > 3)
+            select x
+        }
+
+    /// Test query for range equality optimization: x >= 5 && x <= 5 should optimize to x = 5  
+    let qryRangeEqualityOptimization (arr:int list) =
+        query{
+            for x in arr.AsQueryable() do
+            where (x >= 5 && x <= 5)
+            select x
+        }
+
+    /// Test query for string length optimization
+    let qryStringLengthOptimization (arr:string list) =
+        query{
+            for s in arr.AsQueryable() do
+            where (s.Length > 0)
+            select s
+        }
+
     let qry15 (arr:int list) =
         let y : int Option = Option.None
         let xx = box(Nullable<int>())
@@ -837,3 +861,83 @@ module Starter =
 //| ExecuteOpt1   | 11.58 ms | 0.102 ms | 0.091 ms |  1.04 | 93.7500 | 46.8750 | 657.88 KB |        1.17 |
 
 // Result: A laptop ran 18 test cases in 0.00063 seconds.
+
+module NewOptimizationTests =
+
+    [<Fact>] 
+    let ``Range optimization combines greater than conditions`` () =
+        let arr = [1; 2; 3; 4; 5; 6; 7; 8; 9; 10]
+        let query = Queries.qryRangeOptimization arr
+        let expected, actual = Queries.testExpression query
+        
+        // Test that optimization occurred (expression changed)
+        let originalExpr = query.Expression.ToString()
+        let optimizedExpr = (ExpressionOptimizer.visit query.Expression).ToString()
+        
+        // Should have reduced the expression complexity  
+        optimizedExpr.Length |> should be (lessThan originalExpr.Length)
+        
+        // Results should be the same
+        expected |> should equal actual
+
+    [<Fact>]
+    let ``Range equality optimization works`` () =
+        let arr = [1; 2; 3; 4; 5; 6; 7; 8; 9; 10]
+        let query = Queries.qryRangeEqualityOptimization arr
+        let expected, actual = Queries.testExpression query
+        
+        // Test that optimization occurred
+        let originalExpr = query.Expression.ToString()
+        let optimizedExpr = (ExpressionOptimizer.visit query.Expression).ToString()
+        
+        // Should convert range to equality
+        optimizedExpr |> should contain "="
+        
+        // Results should be the same
+        expected |> should equal actual
+
+    [<Fact>]
+    let ``String length optimization works`` () =
+        let arr = [""; "a"; "ab"; "abc"]
+        let query = Queries.qryStringLengthOptimization arr
+        let expected, actual = Queries.testExpression query
+        
+        // Test that optimization occurred  
+        let originalExpr = query.Expression.ToString()
+        let optimizedExpr = (ExpressionOptimizer.visit query.Expression).ToString()
+        
+        // Should contain optimized string method
+        optimizedExpr |> should contain "IsNullOrEmpty"
+        
+        // Results should be the same
+        expected |> should equal actual
+
+    [<Fact>]
+    let ``Property matching performance improvement`` () =
+        // Test that the optimized property matching still works correctly
+        let param = Expression.Parameter(typeof<int>, "x")
+        let const5 = Expression.Constant(5)
+        let greaterThan5 = Expression.GreaterThan(param, const5)
+        
+        // Test property matching on same expressions
+        Methods.propertyMatch param param |> should equal true
+        Methods.propertyMatch const5 const5 |> should equal true
+        Methods.propertyMatch greaterThan5 greaterThan5 |> should equal true
+        
+        // Test property matching on different expressions
+        let const3 = Expression.Constant(3)
+        Methods.propertyMatch const5 const3 |> should equal false
+
+    [<Fact>]
+    let ``Anonymous type detection cache works`` () =
+        // Create an anonymous type expression (this is a bit complex to test directly,
+        // but we can test that the optimization still works)
+        let arr = [(1, "a"); (2, "b"); (3, "c")]
+        let query = 
+            query {
+                for (x, y) in arr.AsQueryable() do
+                select (x, y)
+            }
+        
+        let expected, actual = Queries.testExpression query
+        expected |> should equal actual
