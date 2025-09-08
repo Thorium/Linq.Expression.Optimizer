@@ -1,3 +1,7 @@
+### 1.0.33 - 18/09/2025
+* A few new aritmethics rules
+* Minor performance improvements
+
 ### 1.0.32 - 19/06/2025
 * Known null.hasValue is always false
 * X times zero equals zero

@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <!--<TargetFramework>netstandard1.6</TargetFramework>-->
-    <TargetFrameworks>netstandard2.0;netstandard2.1;net8.0</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0;netstandard2.1;net8.0;net9.0</TargetFrameworks>
     <!-- <TargetFramework>netcoreapp1.1</TargetFramework> -->
     <!-- <TargetFramework>net45</TargetFramework> -->
     <PackageId>Linq.Expression.Optimizer</PackageId>
@@ -32,7 +32,6 @@
   </ItemGroup>
   <ItemGroup>
 	<!--<PackageReference Include="FSharp.Core" Version="4.2.3" Condition="'$(TargetFramework)' == 'netstandard1.6'" />-->
-	<PackageReference Include="System.ValueTuple" Version="4.3.0" Condition="'$(TargetFramework)' == 'netstandard1.6'" />
     <PackageReference Include="FSharp.Core" Version="8.0.301" Condition="'$(TargetFramework)' != 'netstandard1.6'" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />

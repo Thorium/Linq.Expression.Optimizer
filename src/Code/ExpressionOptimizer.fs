@@ -323,49 +323,108 @@ module Methods =
             if lCe.Value :? IComparable && rCe.Value :? IComparable then
                 let lComp = lCe.Value :?> IComparable
                 let rComp = rCe.Value :?> IComparable
-                Some (lComp.CompareTo(rComp))
-            else None
-        else None
+                ValueSome (lComp.CompareTo rComp)
+            else ValueNone
+        else ValueNone
 
     /// Optimize range/interval comparisons with proper max/min logic
-    let ``optimize comparison ranges`` = function
+    let ``optimize comparison ranges`` = fun exp ->
+        match exp with
         | And' (ComparisonExpression (leftOp, leftVar, leftVal), ComparisonExpression (rightOp, rightVar, rightVal)) 
             when propertyMatch leftVar rightVar ->
             match leftOp, rightOp with
             // x > a && x > b -> x > max(a,b) - choose the more restrictive condition
             | ExpressionType.GreaterThan, ExpressionType.GreaterThan ->
                 match compareConstants leftVal rightVal with
-                | Some cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression  // left > right
-                | Some cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, rightVal) :> Expression // right > left  
-                | Some _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression // equal
-                | None -> noHit
+                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression  // left > right
+                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, rightVar, rightVal) :> Expression // right > left  
+                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression // equal
+                | _ -> exp
             | ExpressionType.GreaterThanOrEqual, ExpressionType.GreaterThanOrEqual ->
                 match compareConstants leftVal rightVal with
-                | Some cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
-                | Some cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, rightVal) :> Expression
-                | Some _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
-                | None -> noHit
+                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
+                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, rightVar, rightVal) :> Expression
+                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
+                | _ -> exp
             // x < a && x < b -> x < min(a,b) - choose the more restrictive condition  
             | ExpressionType.LessThan, ExpressionType.LessThan ->
                 match compareConstants leftVal rightVal with
-                | Some cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression  // left < right
-                | Some cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, rightVal) :> Expression // right < left
-                | Some _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression
-                | None -> noHit
+                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression  // left < right
+                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThan, rightVar, rightVal) :> Expression // right < left
+                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression
+                | _ -> exp
             | ExpressionType.LessThanOrEqual, ExpressionType.LessThanOrEqual ->
                 match compareConstants leftVal rightVal with
-                | Some cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
-                | Some cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, rightVal) :> Expression
-                | Some _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
-                | None -> noHit
+                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
+                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, rightVar, rightVal) :> Expression
+                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
+                | _ -> exp
             // x >= a && x <= a -> x = a (only when values are equal)
             | ExpressionType.GreaterThanOrEqual, ExpressionType.LessThanOrEqual 
             | ExpressionType.LessThanOrEqual, ExpressionType.GreaterThanOrEqual when propertyMatch leftVal rightVal ->
                 Expression.MakeBinary(ExpressionType.Equal, leftVar, leftVal) :> Expression
-            | _ -> noHit
-        | _ -> noHit
+            // x > a && x < a -> false
+            | ExpressionType.GreaterThan, ExpressionType.LessThan
+            | ExpressionType.GreaterThan, ExpressionType.LessThanOrEqual 
+            | ExpressionType.LessThan, ExpressionType.GreaterThan
+            | ExpressionType.LessThan, ExpressionType.GreaterThanOrEqual 
+            | ExpressionType.GreaterThanOrEqual, ExpressionType.LessThan
+            | ExpressionType.LessThanOrEqual, ExpressionType.GreaterThan
+                    when propertyMatch leftVal rightVal ->
+                Expression.Constant(false, typeof<bool>) :> Expression
+            | _ -> exp
+        | Or' (ComparisonExpression (leftOp, leftVar, leftVal), ComparisonExpression (rightOp, rightVar, rightVal)) 
+            when propertyMatch leftVar rightVar ->
+            match leftOp, rightOp with
+            // x > a || x > b -> x > min(a,b) - choose the more restrictive condition
+            | ExpressionType.GreaterThan, ExpressionType.GreaterThan ->
+                match compareConstants leftVal rightVal with
+                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, rightVar, rightVal) :> Expression  // left > right
+                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression // right > left  
+                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression // equal
+                | _ -> exp
+            | ExpressionType.GreaterThanOrEqual, ExpressionType.GreaterThanOrEqual ->
+                match compareConstants leftVal rightVal with
+                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, rightVar, rightVal) :> Expression
+                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
+                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
+                | _ -> exp
+            // x < a || x < b -> x < min(a,b) - choose the more restrictive condition  
+            | ExpressionType.LessThan, ExpressionType.LessThan ->
+                match compareConstants leftVal rightVal with
+                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThan, rightVar, rightVal) :> Expression  // left < right
+                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression // right < left
+                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression
+                | _ -> exp
+            | ExpressionType.LessThanOrEqual, ExpressionType.LessThanOrEqual ->
+                match compareConstants leftVal rightVal with
+                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, rightVar, rightVal) :> Expression
+                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
+                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
+                | _ -> exp
+            // x >= a || x <= a -> true
+            | ExpressionType.GreaterThanOrEqual, ExpressionType.LessThanOrEqual 
+            | ExpressionType.LessThanOrEqual, ExpressionType.GreaterThanOrEqual 
+            | ExpressionType.GreaterThanOrEqual, ExpressionType.LessThan 
+            | ExpressionType.LessThanOrEqual, ExpressionType.GreaterThan 
+            | ExpressionType.GreaterThan, ExpressionType.LessThanOrEqual 
+            | ExpressionType.LessThan, ExpressionType.GreaterThanOrEqual 
+                    when propertyMatch leftVal rightVal ->
+                Expression.Constant(true, typeof<bool>) :> Expression
+            // x > a || x < a -> x <> a
+            | ExpressionType.GreaterThan, ExpressionType.LessThan 
+            | ExpressionType.LessThan, ExpressionType.GreaterThan when propertyMatch leftVal rightVal ->
+                Expression.MakeBinary(ExpressionType.NotEqual, leftVar, leftVal) :> Expression
+            | _ -> exp
+        | noHit -> noHit
 
-    /// Simple string optimizations that are clearly beneficial
+    let ``compare equality with itself`` = function
+        | ComparisonExpression (ExpressionType.Equal, leftVar, rightVar) when propertyMatch leftVar rightVar -> Expression.Constant(true, typeof<bool>) :> Expression
+        | ComparisonExpression (ExpressionType.NotEqual, leftVar, rightVar) when propertyMatch leftVar rightVar -> Expression.Constant(false, typeof<bool>) :> Expression
+        | noHit -> noHit
+
+
+    /// String comparisons to IsNullOrEmpty
     let ``optimize string operations`` = function
         | ComparisonExpression (ExpressionType.GreaterThan, (:? MemberExpression as me), (:? ConstantExpression as ce)) 
             when me.Member.Name = "Length" && me.Member.DeclaringType = typeof<string> && ce.Value.Equals(0) ->
@@ -1129,8 +1188,8 @@ let mutable reductionMethods = [
      Methods.``evaluate constants``;  Methods.``evaluate basic constant math``; Methods.``simplify string operations``; Methods.``simplify conditionals``; Methods.``simplify arithmetic identities``
      Methods.``replace constant comparison``; Methods.``remove AnonymousType``; 
      Methods.``cut not used condition``; Methods.``not false is true``; Methods.``remove duplicate condition``; Methods.``remove mutually exclusive condition``; 
-     Methods.``optimize comparison ranges``; Methods.``optimize string operations``;
-     (*Methods.associate; *) Methods.associate_complement; Methods.commute; (*Methods.commute2; Methods.distribute; *) Methods.commute_absorb; Methods.distribute_complement; Methods.gather; Methods.identity; 
+     Methods.``optimize comparison ranges``; Methods.``compare equality with itself``; (* Methods.``optimize string operations``; *) 
+     (*Methods.associate; *) Methods.associate_complement; Methods.commute; (* Methods.commute2; Methods.distribute; *) Methods.commute_absorb; Methods.distribute_complement; Methods.gather; Methods.identity; 
      Methods.annihilate; Methods.absorb; Methods.idempotence; Methods.complement; Methods.doubleNegation; 
      Methods.deMorgan; Methods.balancetree]
 
