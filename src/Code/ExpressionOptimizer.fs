@@ -874,7 +874,8 @@ module Methods =
                 | _ -> e
 
             | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked ->
-                match ri.Value with // x * 0 = 0
+                match ri.Value with 
+                // x * 0 = 0
                 | (:? decimal as riv) when riv = 0m  -> Expression.Constant(riv, ri.Type) :> Expression
                 | (:? float32 as riv) when riv = 0.f -> Expression.Constant(riv, ri.Type) :> Expression
                 | (:? double  as riv) when riv = 0.  -> Expression.Constant(riv, ri.Type) :> Expression
@@ -888,9 +889,24 @@ module Methods =
                 | (:? int8    as riv) when riv = 0y  -> Expression.Constant(riv, ri.Type) :> Expression
                 | (:? uint8   as riv) when riv = 0uy -> Expression.Constant(riv, ri.Type) :> Expression
                 | (:? bigint   as riv) when riv = 0I -> Expression.Constant(riv, ri.Type) :> Expression
+                // x * 1 = x
+                | (:? decimal as riv) when riv = 1m  -> ce.Left
+                | (:? float32 as riv) when riv = 1.f -> ce.Left
+                | (:? double  as riv) when riv = 1.  -> ce.Left
+                | (:? float   as riv) when riv = 1.  -> ce.Left
+                | (:? Int32   as riv) when riv = 1   -> ce.Left
+                | (:? Int64   as riv) when riv = 1L  -> ce.Left
+                | (:? UInt32  as riv) when riv = 1u  -> ce.Left
+                | (:? UInt64  as riv) when riv = 1uL -> ce.Left
+                | (:? Int16   as riv) when riv = 1s  -> ce.Left
+                | (:? UInt16  as riv) when riv = 1us -> ce.Left
+                | (:? int8    as riv) when riv = 1y  -> ce.Left
+                | (:? uint8   as riv) when riv = 1uy -> ce.Left
+                | (:? bigint  as riv) when riv = 1I  -> ce.Left
                 | _ -> e
             | ExpressionType.Constant, _, (:? ConstantExpression as li), _ when e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked ->
-                match li.Value with // 0 * x = 0
+                match li.Value with 
+                // 0 * x = 0
                 | (:? decimal as liv) when liv = 0m  -> Expression.Constant(liv, li.Type) :> Expression
                 | (:? float32 as liv) when liv = 0.f -> Expression.Constant(liv, li.Type) :> Expression
                 | (:? double  as liv) when liv = 0.  -> Expression.Constant(liv, li.Type) :> Expression
@@ -904,6 +920,123 @@ module Methods =
                 | (:? int8    as liv) when liv = 0y  -> Expression.Constant(liv, li.Type) :> Expression
                 | (:? uint8   as liv) when liv = 0uy -> Expression.Constant(liv, li.Type) :> Expression
                 | (:? bigint  as liv) when liv = 0I  -> Expression.Constant(liv, li.Type) :> Expression
+                // 1 * x = x
+                | (:? decimal as liv) when liv = 1m  -> ce.Right
+                | (:? float32 as liv) when liv = 1.f -> ce.Right
+                | (:? double  as liv) when liv = 1.  -> ce.Right
+                | (:? float   as liv) when liv = 1.  -> ce.Right
+                | (:? Int32   as liv) when liv = 1   -> ce.Right
+                | (:? Int64   as liv) when liv = 1L  -> ce.Right
+                | (:? UInt32  as liv) when liv = 1u  -> ce.Right
+                | (:? UInt64  as liv) when liv = 1uL -> ce.Right
+                | (:? Int16   as liv) when liv = 1s  -> ce.Right
+                | (:? UInt16  as liv) when liv = 1us -> ce.Right
+                | (:? int8    as liv) when liv = 1y  -> ce.Right
+                | (:? uint8   as liv) when liv = 1uy -> ce.Right
+                | (:? bigint  as liv) when liv = 1I  -> ce.Right
+                | _ -> e
+            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Divide ->
+                match ri.Value with // x / 1 = x
+                | (:? decimal as riv) when riv = 1m  -> ce.Left
+                | (:? float32 as riv) when riv = 1.f -> ce.Left
+                | (:? double  as riv) when riv = 1.  -> ce.Left
+                | (:? float   as riv) when riv = 1.  -> ce.Left
+                | (:? Int32   as riv) when riv = 1   -> ce.Left
+                | (:? Int64   as riv) when riv = 1L  -> ce.Left
+                | (:? UInt32  as riv) when riv = 1u  -> ce.Left
+                | (:? UInt64  as riv) when riv = 1uL -> ce.Left
+                | (:? Int16   as riv) when riv = 1s  -> ce.Left
+                | (:? UInt16  as riv) when riv = 1us -> ce.Left
+                | (:? int8    as riv) when riv = 1y  -> ce.Left
+                | (:? uint8   as riv) when riv = 1uy -> ce.Left
+                | (:? bigint  as riv) when riv = 1I  -> ce.Left
+                | _ -> e
+            | _ -> e
+        | _ -> e
+
+    /// String concatenation with empty string optimization
+    /// "" + x -> x, x + "" -> x
+    let ``simplify string operations`` (e:Expression) =
+        match e.NodeType, e with
+        | ExpressionType.Add, (:? BinaryExpression as ce) when Type.(=)(ce.Type, typeof<string>) ->
+            match ce.Left.NodeType, ce.Right.NodeType, ce.Left, ce.Right with
+            | ExpressionType.Constant, _, (:? ConstantExpression as le), _ when (le.Value :?> string) = "" -> ce.Right
+            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when (ri.Value :?> string) = "" -> ce.Left
+            | _ -> e
+        | _ -> e
+
+    /// Simplify conditional expressions 
+    /// x ? true : false -> x, x ? false : true -> !x, x ? y : y -> y
+    let ``simplify conditionals`` (e:Expression) =
+        match e.NodeType, e with
+        | ExpressionType.Conditional, (:? ConditionalExpression as ce) -> 
+            match ce.IfTrue.NodeType, ce.IfFalse.NodeType, ce.IfTrue, ce.IfFalse with
+            // x ? true : false -> x
+            | ExpressionType.Constant, ExpressionType.Constant, (:? ConstantExpression as t), (:? ConstantExpression as f) 
+                when Type.(=)(t.Type, typeof<bool>) && Type.(=)(f.Type, typeof<bool>) && (t.Value :?> bool) = true && (f.Value :?> bool) = false -> ce.Test
+            // x ? false : true -> !x
+            | ExpressionType.Constant, ExpressionType.Constant, (:? ConstantExpression as t), (:? ConstantExpression as f) 
+                when Type.(=)(t.Type, typeof<bool>) && Type.(=)(f.Type, typeof<bool>) && (t.Value :?> bool) = false && (f.Value :?> bool) = true -> Expression.Not(ce.Test) :> Expression
+            // x ? y : y -> y (when both branches are identical)
+            | _ when ce.IfTrue.ToString() = ce.IfFalse.ToString() -> ce.IfTrue
+            | _ -> e
+        | _ -> e
+
+    /// Additional arithmetic identity optimizations
+    /// x - 0 -> x, x - x -> 0, x % 1 -> 0
+    let ``simplify arithmetic identities`` (e:Expression) =
+        match e.NodeType, e with
+        | ExpressionType.Subtract, (:? BinaryExpression as ce) ->
+            match ce.Right.NodeType, ce.Right with
+            // x - 0 = x
+            | ExpressionType.Constant, (:? ConstantExpression as ri) ->
+                match ri.Value with
+                | (:? decimal as riv) when riv = 0m  -> ce.Left
+                | (:? float32 as riv) when riv = 0.f -> ce.Left
+                | (:? double  as riv) when riv = 0.  -> ce.Left
+                | (:? float   as riv) when riv = 0.  -> ce.Left
+                | (:? Int32   as riv) when riv = 0   -> ce.Left
+                | (:? Int64   as riv) when riv = 0L  -> ce.Left
+                | (:? UInt32  as riv) when riv = 0u  -> ce.Left
+                | (:? UInt64  as riv) when riv = 0uL -> ce.Left
+                | (:? Int16   as riv) when riv = 0s  -> ce.Left
+                | (:? UInt16  as riv) when riv = 0us -> ce.Left
+                | (:? int8    as riv) when riv = 0y  -> ce.Left
+                | (:? uint8   as riv) when riv = 0uy -> ce.Left
+                | (:? bigint  as riv) when riv = 0I  -> ce.Left
+                | _ -> e
+            // x - x = 0 (when both sides are the same expression)
+            | _ when ce.Left.ToString() = ce.Right.ToString() ->
+                match ce.Left.Type with
+                | t when Type.(=)(t, typeof<decimal>) -> Expression.Constant(0m, t) :> Expression
+                | t when Type.(=)(t, typeof<float32>) -> Expression.Constant(0.f, t) :> Expression
+                | t when Type.(=)(t, typeof<double>)  -> Expression.Constant(0., t) :> Expression
+                | t when Type.(=)(t, typeof<float>)   -> Expression.Constant(0., t) :> Expression
+                | t when Type.(=)(t, typeof<Int32>)   -> Expression.Constant(0, t) :> Expression
+                | t when Type.(=)(t, typeof<Int64>)   -> Expression.Constant(0L, t) :> Expression
+                | t when Type.(=)(t, typeof<UInt32>)  -> Expression.Constant(0u, t) :> Expression
+                | t when Type.(=)(t, typeof<UInt64>)  -> Expression.Constant(0uL, t) :> Expression
+                | t when Type.(=)(t, typeof<Int16>)   -> Expression.Constant(0s, t) :> Expression
+                | t when Type.(=)(t, typeof<UInt16>)  -> Expression.Constant(0us, t) :> Expression
+                | t when Type.(=)(t, typeof<int8>)    -> Expression.Constant(0y, t) :> Expression
+                | t when Type.(=)(t, typeof<uint8>)   -> Expression.Constant(0uy, t) :> Expression
+                | t when Type.(=)(t, typeof<bigint>)  -> Expression.Constant(0I, t) :> Expression
+                | _ -> e
+            | _ -> e
+        | ExpressionType.Modulo, (:? BinaryExpression as ce) ->
+            match ce.Right.NodeType, ce.Right with
+            // x % 1 = 0 (for integer types)
+            | ExpressionType.Constant, (:? ConstantExpression as ri) ->
+                match ri.Value with
+                | (:? Int32   as riv) when riv = 1   -> Expression.Constant(0, ce.Type) :> Expression
+                | (:? Int64   as riv) when riv = 1L  -> Expression.Constant(0L, ce.Type) :> Expression
+                | (:? UInt32  as riv) when riv = 1u  -> Expression.Constant(0u, ce.Type) :> Expression
+                | (:? UInt64  as riv) when riv = 1uL -> Expression.Constant(0uL, ce.Type) :> Expression
+                | (:? Int16   as riv) when riv = 1s  -> Expression.Constant(0s, ce.Type) :> Expression
+                | (:? UInt16  as riv) when riv = 1us -> Expression.Constant(0us, ce.Type) :> Expression
+                | (:? int8    as riv) when riv = 1y  -> Expression.Constant(0y, ce.Type) :> Expression
+                | (:? uint8   as riv) when riv = 1uy -> Expression.Constant(0uy, ce.Type) :> Expression
+                | (:? bigint  as riv) when riv = 1I  -> Expression.Constant(0I, ce.Type) :> Expression
                 | _ -> e
             | _ -> e
         | _ -> e
@@ -911,7 +1044,7 @@ module Methods =
 // ------------------------------------- //
 /// Used optimization methods
 let mutable reductionMethods = [
-     Methods.``evaluate constants``;  Methods.``evaluate basic constant math``
+     Methods.``evaluate constants``;  Methods.``evaluate basic constant math``; Methods.``simplify string operations``; Methods.``simplify conditionals``; Methods.``simplify arithmetic identities``
      Methods.``replace constant comparison``; Methods.``remove AnonymousType``; 
      Methods.``cut not used condition``; Methods.``not false is true``; Methods.``remove duplicate condition``; Methods.``remove mutually exclusive condition``; 
      (*Methods.associate; *) Methods.associate_complement; Methods.commute; (*Methods.commute2; Methods.distribute; *) Methods.commute_absorb; Methods.distribute_complement; Methods.gather; Methods.identity; 

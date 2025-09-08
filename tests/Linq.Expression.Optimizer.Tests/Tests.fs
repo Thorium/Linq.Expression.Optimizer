@@ -258,6 +258,33 @@ module Queries =
             select i
         }
 
+    // New optimizations test queries
+    let qry21 (arr:int list) =
+        query{
+            for x in arr.AsQueryable() do
+            select (x * 1, x / 1, x - 0)
+        }
+
+    let qry22 (arr:int list) =
+        let strings = arr |> List.map(fun x -> x.ToString())
+        query{
+            for s in strings.AsQueryable() do
+            select (s + "", "" + s)
+        }
+
+    let qry23 (arr:int list) =
+        query{
+            for x in arr.AsQueryable() do
+            select (if x > 2 then true else false, if x < 0 then false else true)
+        }
+
+    let qry24 (arr:int list) =
+        query{
+            for x in arr.AsQueryable() do
+            where (x > 0)
+            select (x % 1, x * 1 * 1, x / 1 / 1)
+        }
+
     let testEq (xs:int[]) qry = 
         let res = xs |> Seq.toList |> qry |> testExpression
         res ||> should equal 
@@ -380,6 +407,27 @@ type ``Property Test Fixture`` () =
     [<Property>]
     member test.``Expression optimizer generates smaller expression19`` (xs:int[]) = testLt xs qry19
 
+    // New optimization tests
+    [<Property>]
+    member test.``Expression optimizer generates equal results21 - arithmetic identities`` (xs:int[]) = testEq xs qry21
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression21 - arithmetic identities`` (xs:int[]) = testLt xs qry21
+
+    [<Property>]
+    member test.``Expression optimizer generates equal results22 - string concatenation`` (xs:int[]) = testEq xs qry22
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression22 - string concatenation`` (xs:int[]) = testLt xs qry22
+
+    [<Property>]
+    member test.``Expression optimizer generates equal results23 - conditionals`` (xs:int[]) = testEq xs qry23
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression23 - conditionals`` (xs:int[]) = testLt xs qry23
+
+    [<Property>]
+    member test.``Expression optimizer generates equal results24 - combined identities`` (xs:int[]) = testEq xs qry24
+    [<Property>]
+    member test.``Expression optimizer generates smaller expression24 - combined identities`` (xs:int[]) = testLt xs qry24
+
 type ``Manual Test Fixture`` (output : ITestOutputHelper) = 
     let t = [1;2;3;4;5;6;7;8;9]
 
@@ -463,6 +511,51 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
         let exp = optQry qry20
         output.WriteLine (exp.ToString())
         testLength 18 29 exp
+
+    // Tests for new optimizations
+    [<Xunit.Fact>]
+    member test.``qry21 arithmetic identities optimized``() = 
+        let exp = optQry qry21
+        output.WriteLine (exp.ToString())
+        let origStr = (qry21 t).Expression.ToString()
+        let optStr = exp.ToString()
+        output.WriteLine ("Original length: " + origStr.Length.ToString())
+        output.WriteLine ("Optimized length: " + optStr.Length.ToString())
+        // Should optimize x * 1, x / 1, x - 0 to just x
+        should lessThan optStr.Length origStr.Length
+
+    [<Xunit.Fact>]
+    member test.``qry22 string concatenation optimized``() = 
+        let exp = optQry qry22
+        output.WriteLine (exp.ToString())
+        let origStr = (qry22 t).Expression.ToString()
+        let optStr = exp.ToString()
+        output.WriteLine ("Original length: " + origStr.Length.ToString())
+        output.WriteLine ("Optimized length: " + optStr.Length.ToString())
+        // Should optimize s + "" and "" + s to just s
+        should lessThan optStr.Length origStr.Length
+
+    [<Xunit.Fact>]
+    member test.``qry23 conditionals optimized``() = 
+        let exp = optQry qry23
+        output.WriteLine (exp.ToString())
+        let origStr = (qry23 t).Expression.ToString()
+        let optStr = exp.ToString()
+        output.WriteLine ("Original length: " + origStr.Length.ToString())
+        output.WriteLine ("Optimized length: " + optStr.Length.ToString())
+        // Should optimize x ? true : false to x
+        should lessThan optStr.Length origStr.Length
+
+    [<Xunit.Fact>]
+    member test.``qry24 combined identities optimized``() = 
+        let exp = optQry qry24
+        output.WriteLine (exp.ToString())
+        let origStr = (qry24 t).Expression.ToString()
+        let optStr = exp.ToString()
+        output.WriteLine ("Original length: " + origStr.Length.ToString())
+        output.WriteLine ("Optimized length: " + optStr.Length.ToString())
+        // Should optimize x % 1 to 0, x * 1 * 1 to x, x / 1 / 1 to x
+        should lessThan optStr.Length origStr.Length
 
 
     [<Xunit.Fact>]
