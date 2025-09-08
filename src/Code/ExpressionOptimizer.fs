@@ -363,6 +363,30 @@ module Methods =
             | _ -> noHit
         | _ -> noHit
 
+    /// Simple string optimizations that are clearly beneficial
+    let ``optimize string operations`` = function
+        | ComparisonExpression (ExpressionType.GreaterThan, 
+                               (:? MemberExpression as me when me.Member.Name = "Length" && 
+                                me.Member.DeclaringType = typeof<string>),
+                               (:? ConstantExpression as ce when ce.Value.Equals(0))) ->
+            // str.Length > 0 -> !String.IsNullOrEmpty(str) 
+            let isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [|typeof<string>|])
+            let callIsNullOrEmpty = Expression.Call(isNullOrEmptyMethod, me.Expression)
+            Expression.Not(callIsNullOrEmpty) :> Expression
+        | ComparisonExpression (ExpressionType.Equal,
+                               (:? ConstantExpression as ce when ce.Value.Equals("")),
+                               str) when str.Type = typeof<string> ->
+            // "" == str -> String.IsNullOrEmpty(str)
+            let isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [|typeof<string>|])
+            Expression.Call(isNullOrEmptyMethod, str) :> Expression  
+        | ComparisonExpression (ExpressionType.Equal,
+                               str,
+                               (:? ConstantExpression as ce when ce.Value.Equals(""))) when str.Type = typeof<string> ->
+            // str == "" -> String.IsNullOrEmpty(str)
+            let isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [|typeof<string>|])
+            Expression.Call(isNullOrEmptyMethod, str) :> Expression
+        | noHit -> noHit
+
     let commute_absorb = fun exp ->
         match exp with
         | And' (innercontent) ->
@@ -1107,7 +1131,7 @@ let mutable reductionMethods = [
      Methods.``evaluate constants``;  Methods.``evaluate basic constant math``; Methods.``simplify string operations``; Methods.``simplify conditionals``; Methods.``simplify arithmetic identities``
      Methods.``replace constant comparison``; Methods.``remove AnonymousType``; 
      Methods.``cut not used condition``; Methods.``not false is true``; Methods.``remove duplicate condition``; Methods.``remove mutually exclusive condition``; 
-     Methods.``optimize comparison ranges``;
+     Methods.``optimize comparison ranges``; Methods.``optimize string operations``;
      (*Methods.associate; *) Methods.associate_complement; Methods.commute; (*Methods.commute2; Methods.distribute; *) Methods.commute_absorb; Methods.distribute_complement; Methods.gather; Methods.identity; 
      Methods.annihilate; Methods.absorb; Methods.idempotence; Methods.complement; Methods.doubleNegation; 
      Methods.deMorgan; Methods.balancetree]

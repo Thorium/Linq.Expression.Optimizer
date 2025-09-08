@@ -930,3 +930,72 @@ module Starter =
 //| ExecuteOpt1   | 11.58 ms | 0.102 ms | 0.091 ms |  1.04 | 93.7500 | 46.8750 | 657.88 KB |        1.17 |
 
 // Result: A laptop ran 18 test cases in 0.00063 seconds.
+
+module CodeReviewFixTests =
+    
+    [<Fact>]
+    let ``Parameter expressions are now properly matched`` () =
+        let param1 = Expression.Parameter(typeof<int>, "x")
+        let param2 = Expression.Parameter(typeof<int>, "x")
+        let param3 = Expression.Parameter(typeof<string>, "x")
+        let param4 = Expression.Parameter(typeof<int>, "y")
+        
+        // Same type and name should match
+        Methods.propertyMatch param1 param2 |> should equal true
+        
+        // Different types should not match
+        Methods.propertyMatch param1 param3 |> should equal false
+        
+        // Different names should not match  
+        Methods.propertyMatch param1 param4 |> should equal false
+
+    [<Fact>]
+    let ``Range optimization correctly chooses more restrictive condition`` () =
+        let param = Expression.Parameter(typeof<int>, "x")
+        let const3 = Expression.Constant(3)
+        let const5 = Expression.Constant(5)
+        
+        // x > 3 && x > 5 should become x > 5 (5 is more restrictive)
+        let greaterThan3 = Expression.GreaterThan(param, const3)
+        let greaterThan5 = Expression.GreaterThan(param, const5)
+        let combined = Expression.AndAlso(greaterThan3, greaterThan5)
+        
+        let optimized = ExpressionOptimizer.visit combined
+        
+        // Should contain the more restrictive condition (5)
+        optimized.ToString() |> should contain "5"
+        // Should be simpler than the original
+        optimized.ToString().Length |> should be (lessThan combined.ToString().Length)
+
+    [<Fact>]
+    let ``String length optimization converts to IsNullOrEmpty`` () =
+        let param = Expression.Parameter(typeof<string>, "str")
+        let lengthProperty = typeof<string>.GetProperty("Length")
+        let lengthAccess = Expression.MakeMemberAccess(param, lengthProperty)
+        let zero = Expression.Constant(0)
+        
+        // str.Length > 0 should become !String.IsNullOrEmpty(str)
+        let lengthGreaterThanZero = Expression.GreaterThan(lengthAccess, zero)
+        
+        let optimized = ExpressionOptimizer.visit lengthGreaterThanZero
+        
+        // Should contain IsNullOrEmpty method call
+        optimized.ToString() |> should contain "IsNullOrEmpty"
+
+    [<Fact>]
+    let ``Anonymous type optimization still works`` () =
+        // Test that anonymous type optimization still works after removing ConcurrentDictionary
+        let arr = [(1, "a"); (2, "b"); (3, "c")]
+        let query = 
+            query {
+                for (x, y) in arr.AsQueryable() do
+                select (x, y) 
+            }
+        
+        let original = query.Expression.ToString()
+        let optimized = (ExpressionOptimizer.visit query.Expression).ToString()
+        
+        // The optimization should still work (expression should change)
+        // We can't easily verify the exact transformation without executing,
+        // but we can verify it doesn't crash and produces a valid expression
+        optimized |> should not' (equal original)
