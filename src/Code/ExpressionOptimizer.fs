@@ -315,15 +315,17 @@ module Methods =
         | Or' (Not' p, p1) when propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
         | noHit -> noHit
 
-    /// Helper function to compare two constant expressions
+    /// Helper function to compare two constant expressions  
     let private compareConstants (left: Expression) (right: Expression) =
-        match left, right with
-        | (:? ConstantExpression as l), (:? ConstantExpression as r) 
-            when l.Value :? IComparable && r.Value :? IComparable ->
-            let lComp = l.Value :?> IComparable
-            let rComp = r.Value :?> IComparable
-            Some (lComp.CompareTo(rComp))
-        | _ -> None
+        if left :? ConstantExpression && right :? ConstantExpression then
+            let lCe = left :?> ConstantExpression
+            let rCe = right :?> ConstantExpression
+            if lCe.Value :? IComparable && rCe.Value :? IComparable then
+                let lComp = lCe.Value :?> IComparable
+                let rComp = rCe.Value :?> IComparable
+                Some (lComp.CompareTo(rComp))
+            else None
+        else None
 
     /// Optimize range/interval comparisons with proper max/min logic
     let ``optimize comparison ranges`` = function
@@ -365,23 +367,19 @@ module Methods =
 
     /// Simple string optimizations that are clearly beneficial
     let ``optimize string operations`` = function
-        | ComparisonExpression (ExpressionType.GreaterThan, 
-                               (:? MemberExpression as me when me.Member.Name = "Length" && 
-                                me.Member.DeclaringType = typeof<string>),
-                               (:? ConstantExpression as ce when ce.Value.Equals(0))) ->
+        | ComparisonExpression (ExpressionType.GreaterThan, (:? MemberExpression as me), (:? ConstantExpression as ce)) 
+            when me.Member.Name = "Length" && me.Member.DeclaringType = typeof<string> && ce.Value.Equals(0) ->
             // str.Length > 0 -> !String.IsNullOrEmpty(str) 
             let isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [|typeof<string>|])
             let callIsNullOrEmpty = Expression.Call(isNullOrEmptyMethod, me.Expression)
             Expression.Not(callIsNullOrEmpty) :> Expression
-        | ComparisonExpression (ExpressionType.Equal,
-                               (:? ConstantExpression as ce when ce.Value.Equals("")),
-                               str) when str.Type = typeof<string> ->
+        | ComparisonExpression (ExpressionType.Equal, (:? ConstantExpression as ce), str) 
+            when ce.Value.Equals("") && str.Type = typeof<string> ->
             // "" == str -> String.IsNullOrEmpty(str)
             let isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [|typeof<string>|])
             Expression.Call(isNullOrEmptyMethod, str) :> Expression  
-        | ComparisonExpression (ExpressionType.Equal,
-                               str,
-                               (:? ConstantExpression as ce when ce.Value.Equals(""))) when str.Type = typeof<string> ->
+        | ComparisonExpression (ExpressionType.Equal, str, (:? ConstantExpression as ce)) 
+            when str.Type = typeof<string> && ce.Value.Equals("") ->
             // str == "" -> String.IsNullOrEmpty(str)
             let isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [|typeof<string>|])
             Expression.Call(isNullOrEmptyMethod, str) :> Expression
