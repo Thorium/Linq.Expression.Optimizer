@@ -20,9 +20,14 @@ module Methods =
         else
         match p.NodeType, p, p2 with
         | ExpressionType.MemberAccess, (:? MemberExpression as pe1), (:? MemberExpression as pe2) -> 
-            (pe1.Member = pe2.Member) && (pe1.Expression = pe2.Expression) && pe1.ToString() = pe2.ToString()
+            // Fast checks first: member equality and expression equality
+            (pe1.Member = pe2.Member) && (pe1.Expression = pe2.Expression) &&
+            // Only use expensive string comparison as fallback
+            pe1.ToString() = pe2.ToString()
         | ExpressionType.Constant, (:? ConstantExpression as ce1), (:? ConstantExpression as ce2) -> 
             ce1.Value = ce2.Value
+        | ExpressionType.Parameter, (:? ParameterExpression as pe1), (:? ParameterExpression as pe2) ->
+            pe1.Name = pe2.Name && pe1.Type = pe2.Type
         | _ -> false
         
 
@@ -86,14 +91,21 @@ module Methods =
             | _ -> e
         | _ -> e
 
+    /// Check if a type is an anonymous type without expensive operations
+    let private isAnonymousType (t: Type) =
+        let name = t.Name
+        name.StartsWith("AnonymousObject", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("<>f__AnonymousType", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("Tuple", StringComparison.OrdinalIgnoreCase)
+
     /// Purpose of this is to replace non-used anonymous types:
     /// new AnonymousObject(Item1 = x, Item2 = "").Item1    -->   x
     let ``remove AnonymousType`` (e:Expression) =
         if e = Unchecked.defaultof<Expression> then e else 
         match e.NodeType, e with
-        //FShap anonymous type:
+        //F# anonymous type:
         | ExpressionType.MemberAccess, ( :? MemberExpression as me)
-            when me.Member.DeclaringType.Name.ToUpper().StartsWith("ANONYMOUSOBJECT") || me.Member.DeclaringType.Name.ToUpper().StartsWith "TUPLE" ->
+            when isAnonymousType me.Member.DeclaringType ->
                 let memberIndex = 
                     if me.Member.Name.StartsWith("Item") && me.Member.Name.Length > 4 then
 #if NETSTANDARD21
@@ -109,9 +121,9 @@ module Methods =
                         ne.Arguments.[idx-1] // We found it!
                     else e
                 | _ -> e
-        //CSharp anonymous type:
+        //C# anonymous type:
         | ExpressionType.MemberAccess, ( :? MemberExpression as me)
-            when me.Member.DeclaringType.Name.ToUpper().StartsWith("<>F__ANONYMOUSTYPE") || me.Member.DeclaringType.Name.ToUpper().StartsWith "TUPLE" ->
+            when isAnonymousType me.Member.DeclaringType ->
                 match me.Expression.NodeType, me.Expression, me.Member with 
                 | ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when not(isNull ne.Arguments || isNull p) -> 
                         let selected = ne.Arguments |> Seq.tryPick(function
@@ -301,6 +313,76 @@ module Methods =
         | And' (Not' p, p1) when propertyMatch p p1 -> Expression.Constant(false, typeof<bool>) :> Expression
         | Or' (p, Not' p1)
         | Or' (Not' p, p1) when propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
+        | noHit -> noHit
+
+    /// Helper function to compare two constant expressions  
+    let private compareConstants (left: Expression) (right: Expression) =
+        if left :? ConstantExpression && right :? ConstantExpression then
+            let lCe = left :?> ConstantExpression
+            let rCe = right :?> ConstantExpression
+            if lCe.Value :? IComparable && rCe.Value :? IComparable then
+                let lComp = lCe.Value :?> IComparable
+                let rComp = rCe.Value :?> IComparable
+                Some (lComp.CompareTo(rComp))
+            else None
+        else None
+
+    /// Optimize range/interval comparisons with proper max/min logic
+    let ``optimize comparison ranges`` = function
+        | And' (ComparisonExpression (leftOp, leftVar, leftVal), ComparisonExpression (rightOp, rightVar, rightVal)) 
+            when propertyMatch leftVar rightVar ->
+            match leftOp, rightOp with
+            // x > a && x > b -> x > max(a,b) - choose the more restrictive condition
+            | ExpressionType.GreaterThan, ExpressionType.GreaterThan ->
+                match compareConstants leftVal rightVal with
+                | Some cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression  // left > right
+                | Some cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, rightVal) :> Expression // right > left  
+                | Some _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression // equal
+                | None -> noHit
+            | ExpressionType.GreaterThanOrEqual, ExpressionType.GreaterThanOrEqual ->
+                match compareConstants leftVal rightVal with
+                | Some cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
+                | Some cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, rightVal) :> Expression
+                | Some _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
+                | None -> noHit
+            // x < a && x < b -> x < min(a,b) - choose the more restrictive condition  
+            | ExpressionType.LessThan, ExpressionType.LessThan ->
+                match compareConstants leftVal rightVal with
+                | Some cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression  // left < right
+                | Some cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, rightVal) :> Expression // right < left
+                | Some _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression
+                | None -> noHit
+            | ExpressionType.LessThanOrEqual, ExpressionType.LessThanOrEqual ->
+                match compareConstants leftVal rightVal with
+                | Some cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
+                | Some cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, rightVal) :> Expression
+                | Some _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
+                | None -> noHit
+            // x >= a && x <= a -> x = a (only when values are equal)
+            | ExpressionType.GreaterThanOrEqual, ExpressionType.LessThanOrEqual 
+            | ExpressionType.LessThanOrEqual, ExpressionType.GreaterThanOrEqual when propertyMatch leftVal rightVal ->
+                Expression.MakeBinary(ExpressionType.Equal, leftVar, leftVal) :> Expression
+            | _ -> noHit
+        | _ -> noHit
+
+    /// Simple string optimizations that are clearly beneficial
+    let ``optimize string operations`` = function
+        | ComparisonExpression (ExpressionType.GreaterThan, (:? MemberExpression as me), (:? ConstantExpression as ce)) 
+            when me.Member.Name = "Length" && me.Member.DeclaringType = typeof<string> && ce.Value.Equals(0) ->
+            // str.Length > 0 -> !String.IsNullOrEmpty(str) 
+            let isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [|typeof<string>|])
+            let callIsNullOrEmpty = Expression.Call(isNullOrEmptyMethod, me.Expression)
+            Expression.Not(callIsNullOrEmpty) :> Expression
+        | ComparisonExpression (ExpressionType.Equal, (:? ConstantExpression as ce), str) 
+            when ce.Value.Equals("") && str.Type = typeof<string> ->
+            // "" == str -> String.IsNullOrEmpty(str)
+            let isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [|typeof<string>|])
+            Expression.Call(isNullOrEmptyMethod, str) :> Expression  
+        | ComparisonExpression (ExpressionType.Equal, str, (:? ConstantExpression as ce)) 
+            when str.Type = typeof<string> && ce.Value.Equals("") ->
+            // str == "" -> String.IsNullOrEmpty(str)
+            let isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [|typeof<string>|])
+            Expression.Call(isNullOrEmptyMethod, str) :> Expression
         | noHit -> noHit
 
     let commute_absorb = fun exp ->
@@ -1047,6 +1129,7 @@ let mutable reductionMethods = [
      Methods.``evaluate constants``;  Methods.``evaluate basic constant math``; Methods.``simplify string operations``; Methods.``simplify conditionals``; Methods.``simplify arithmetic identities``
      Methods.``replace constant comparison``; Methods.``remove AnonymousType``; 
      Methods.``cut not used condition``; Methods.``not false is true``; Methods.``remove duplicate condition``; Methods.``remove mutually exclusive condition``; 
+     Methods.``optimize comparison ranges``; Methods.``optimize string operations``;
      (*Methods.associate; *) Methods.associate_complement; Methods.commute; (*Methods.commute2; Methods.distribute; *) Methods.commute_absorb; Methods.distribute_complement; Methods.gather; Methods.identity; 
      Methods.annihilate; Methods.absorb; Methods.idempotence; Methods.complement; Methods.doubleNegation; 
      Methods.deMorgan; Methods.balancetree]
