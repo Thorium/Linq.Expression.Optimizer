@@ -798,8 +798,8 @@ module Methods =
                     
         | ExpressionType.MemberAccess, ( :? MemberExpression as me) 
             when (not(isNull me)) && isNull me.Expression && 
-                    (me.Member.DeclaringType.Name.ToUpper().StartsWith("FSI_") 
-                     || me.Member.DeclaringType.Name.ToUpper().StartsWith("<>C__DISPLAYCLASS") ) -> 
+                    (me.Member.DeclaringType.Name.StartsWith("FSI_", StringComparison.InvariantCultureIgnoreCase) 
+                     || me.Member.DeclaringType.Name.StartsWith("<>C__DISPLAYCLASS", StringComparison.InvariantCultureIgnoreCase) ) -> 
                 match me.Member with 
                 | :? PropertyInfo as p when p.GetType().FullName.StartsWith("System") -> 
                         Expression.Constant(Expression.Lambda(me).Compile().DynamicInvoke(null), me.Type) :> Expression
