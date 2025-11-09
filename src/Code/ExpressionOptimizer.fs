@@ -1,4 +1,4 @@
-﻿/// This is just a light-weight expression optimizer.
+/// This is just a light-weight expression optimizer.
 /// It won't do any heavy stuff...
 #if !INTERACTIVE
 module ExpressionOptimizer
@@ -273,6 +273,15 @@ module Methods =
         | Or' (And'(p, p1), And'(p2, p3)) when propertyMatch p p2 -> Expression.AndAlso(p, Expression.OrElse(p1, p3)) :> Expression
         | And' (Or'(p, p1), Or'(p3, p2)) when propertyMatch p p2 -> Expression.OrElse(p, Expression.AndAlso(p1, p3)) :> Expression
         | Or' (And'(p, p1), And'(p3, p2)) when propertyMatch p p2 -> Expression.AndAlso(p, Expression.OrElse(p1, p3)) :> Expression
+        | noHit -> noHit
+
+    /// Factorize complementary disjunctions: (X && P) || (!X && P) -> P
+    /// This handles the pattern where all states of a variable are covered
+    let factorComplement = function
+        | Or' (And'(p, rest), And'(Not' p1, rest2)) when propertyMatch p p1 && propertyMatch rest rest2 -> rest
+        | Or' (And'(Not' p, rest), And'(p1, rest2)) when propertyMatch p p1 && propertyMatch rest rest2 -> rest
+        | Or' (And'(rest, p), And'(rest2, Not' p1)) when propertyMatch p p1 && propertyMatch rest rest2 -> rest
+        | Or' (And'(rest, Not' p), And'(rest2, p1)) when propertyMatch p p1 && propertyMatch rest rest2 -> rest
         | noHit -> noHit
 
     let identity = function
@@ -1189,7 +1198,7 @@ let mutable reductionMethods = [
      Methods.``replace constant comparison``; Methods.``remove AnonymousType``; 
      Methods.``cut not used condition``; Methods.``not false is true``; Methods.``remove duplicate condition``; Methods.``remove mutually exclusive condition``; 
      Methods.``optimize comparison ranges``; Methods.``compare equality with itself``; (* Methods.``optimize string operations``; *) 
-     (*Methods.associate; *) Methods.associate_complement; Methods.commute; (* Methods.commute2; Methods.distribute; *) Methods.commute_absorb; Methods.distribute_complement; Methods.gather; Methods.identity; 
+     (*Methods.associate; *) Methods.associate_complement; Methods.commute; (* Methods.commute2; Methods.distribute; *) Methods.commute_absorb; Methods.distribute_complement; Methods.factorComplement; Methods.gather; Methods.identity; 
      Methods.annihilate; Methods.absorb; Methods.idempotence; Methods.complement; Methods.doubleNegation; 
      Methods.deMorgan; Methods.balancetree]
 

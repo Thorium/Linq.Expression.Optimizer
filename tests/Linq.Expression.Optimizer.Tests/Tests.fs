@@ -916,6 +916,49 @@ type MoreInternalTests (output : ITestOutputHelper) =
         optimized3.ToString().Length |> should be (lessThan (combined3.ToString().Length))
 
 
+    [<Xunit.Fact>]
+    member _.``Factor complement simplifies complementary disjunctions`` () =
+        // Test case inspired by GitHub issue #18
+        // The factorComplement rule handles: (P && Q) || (!P && Q) -> Q
+        
+        let paramP = Expression.Parameter(typeof<bool>, "P")
+        let paramQ = Expression.Parameter(typeof<bool>, "Q")
+        let paramR = Expression.Parameter(typeof<bool>, "R")
+        let notP = Expression.Not(paramP)
+        let notQ = Expression.Not(paramQ)
+        
+        // Test 1: (P && Q) || (!P && Q) should simplify to Q
+        let pAndQ = Expression.AndAlso(paramP, paramQ)
+        let notPAndQ = Expression.AndAlso(notP, paramQ)
+        let test1 = Expression.OrElse(pAndQ, notPAndQ)
+        
+        let optimized1 = ExpressionOptimizer.visit test1
+        optimized1.ToString() |> should equal (paramQ.ToString())
+        
+        // Test 2: (Q && P) || (Q && !P) should simplify to Q (reversed order)
+        let qAndP = Expression.AndAlso(paramQ, paramP)
+        let qAndNotP = Expression.AndAlso(paramQ, notP)
+        let test2 = Expression.OrElse(qAndP, qAndNotP)
+        
+        let optimized2 = ExpressionOptimizer.visit test2
+        optimized2.ToString() |> should equal (paramQ.ToString())
+        
+        // Test 3: (!P && R) || (P && R) should simplify to R
+        let notPAndR = Expression.AndAlso(notP, paramR)
+        let pAndR = Expression.AndAlso(paramP, paramR)
+        let test3 = Expression.OrElse(notPAndR, pAndR)
+        
+        let optimized3 = ExpressionOptimizer.visit test3
+        optimized3.ToString() |> should equal (paramR.ToString())
+        
+        // Test 4: (R && !Q) || (R && Q) should simplify to R (mixed order)
+        let rAndNotQ = Expression.AndAlso(paramR, notQ)
+        let rAndQ = Expression.AndAlso(paramR, paramQ)
+        let test4 = Expression.OrElse(rAndNotQ, rAndQ)
+        
+        let optimized4 = ExpressionOptimizer.visit test4
+        optimized4.ToString() |> should equal (paramR.ToString())
+
     [<Xunit.Fact(Skip = "IsNullOrEmpty not in use by default")>]
     member _.``String length optimization converts to IsNullOrEmpty`` () =
         let param = Expression.Parameter(typeof<string>, "str")

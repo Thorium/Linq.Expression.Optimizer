@@ -1,3 +1,6 @@
+### 1.0.34 - 09/11/2025
+* A factorComplement rule to address #18
+
 ### 1.0.33 - 18/09/2025
 * A few new aritmethics rules
 * Minor performance improvements
