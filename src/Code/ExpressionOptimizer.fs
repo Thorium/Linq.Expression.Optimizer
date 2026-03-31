@@ -1272,6 +1272,11 @@ and internal visitchilds (e:Expression): Expression =
     | nt, (:? BinaryExpression as e)      -> 
             let v1, v2 = visit' e.Left, visit' e.Right
             if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(nt,v1,v2,e.IsLiftedToNull, e.Method)
+    | ExpressionType.Block, (:? BlockExpression as e) ->
+            let transformedVariables =
+                try e.Variables |> Seq.map(fun e -> visit' e :?> ParameterExpression)
+                with | _ -> e.Variables
+            upcast Expression.Block(transformedVariables, e.Expressions |> Seq.map(fun e -> visit' e))
     | nt, _ -> if (int nt = 52) then e // Expression.Extension
                else failwith ("encountered unknown LINQ expression: " + e.NodeType.ToString() + " " + e.ToString())
 
