@@ -146,6 +146,22 @@ module Methods =
                             match selected with Some x -> x | None -> e
                         | None -> e
                 | _ -> e
+        | ExpressionType.Block, ( :? BlockExpression as be) when be.Expressions.Count = 1 -> 
+            // Empty code block
+            be.Expressions.[0]
+        | ExpressionType.Block, ( :? BlockExpression as be) when be.Expressions.Count = 2 -> 
+            // let x = y
+            // x.Prop -> y.Prop
+            match be.Expressions.[0].NodeType, be.Expressions.[0] with
+            | ExpressionType.Assign, (:? BinaryExpression as beAssign) 
+                when beAssign.Left.NodeType = ExpressionType.Parameter 
+                     && beAssign.Left = be.Variables.[0] -> 
+                 
+                    match be.Expressions.[1].NodeType, be.Expressions.[1] with
+                    | ExpressionType.MemberAccess, (:? MemberExpression as me) when me.Expression = be.Variables.[0] -> 
+                        Expression.MakeMemberAccess(beAssign.Right, me.Member) :> Expression
+                    | _ -> e
+            | _ -> e
         | _ -> e
 
 
