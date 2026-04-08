@@ -5,10 +5,7 @@
     <IsPackable>false</IsPackable>
     <GenerateProgramFile>false</GenerateProgramFile>
     <IsTestProject>true</IsTestProject>
-	<AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <Name>Linq.Expression.Optimizer.Tests</Name>
-    <TargetFrameworkVersion>v4.8.1</TargetFrameworkVersion>
-    <TargetFSharpCoreVersion>8.0.0.0</TargetFSharpCoreVersion>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
@@ -19,10 +16,12 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.4.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.4.2" />
-	<PackageReference Update="FSharp.Core" Version="8.0.301" />
+    <PackageReference Include="FsCheck.Xunit" Version="2.11.0" />
+    <PackageReference Include="FsUnit.xUnit" Version="3.2.0" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.13.12" />
+    <PackageReference Update="FSharp.Core" Version="8.0.301" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Linq.Expression.Optimizer\Linq.Expression.Optimizer.fsproj" />
   </ItemGroup>
-  <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

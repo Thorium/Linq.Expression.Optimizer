@@ -1,3 +1,6 @@
+### 1.0.35 - 08/04/2026
+* ExpressionType Block added
+
 ### 1.0.34 - 09/11/2025
 * A factorComplement rule to address #18
 
