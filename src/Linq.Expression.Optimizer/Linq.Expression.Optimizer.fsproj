@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net481;netstandard2.0;netstandard2.1;net8.0;net9.0</TargetFrameworks>
+    <TargetFrameworks>net481;netstandard2.0;netstandard2.1;net8.0;net9.0;net10.0</TargetFrameworks>
     <AssemblyName>Linq.Expression.Optimizer</AssemblyName>
     <RootNamespace>Linq.Expression.Optimizer</RootNamespace>
     <SignAssembly>true</SignAssembly>
@@ -23,7 +23,7 @@
     <PackageTags>LINQ Expression Expressions Expression tree expressiontree expression-tree IQueryable System.Linq.Expressions optimise optimize compile boolean algebra deMorgan reduction optimizer optimiser tree</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0' Or '$(TargetFramework)' == 'net9.0' Or '$(TargetFramework)' == 'netstandard2.1'">
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0' Or '$(TargetFramework)' == 'net9.0' Or '$(TargetFramework)' == 'net10.0' Or '$(TargetFramework)' == 'netstandard2.1'">
     <DefineConstants>$(DefineConstants);NETSTANDARD21</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
