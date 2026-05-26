@@ -1,3 +1,6 @@
+### 1.0.36 - 26/05/2026
+* NET 10 version added
+
 ### 1.0.35 - 08/04/2026
 * ExpressionType Block added
 

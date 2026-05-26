@@ -42,3 +42,6 @@ files
     ../../src/Linq.Expression.Optimizer/bin/Release/net8.0/Linq.Expression.Optimizer.deps.json ==> lib/net8.0
     ../../src/Linq.Expression.Optimizer/bin/Release/net8.0/Linq.Expression.Optimizer.dll ==> lib/net8.0
     ../../src/Linq.Expression.Optimizer/bin/Release/net8.0/Linq.Expression.Optimizer.xml ==> lib/net8.0
+    ../../src/Linq.Expression.Optimizer/bin/Release/net10.0/Linq.Expression.Optimizer.deps.json ==> lib/net10.0
+    ../../src/Linq.Expression.Optimizer/bin/Release/net10.0/Linq.Expression.Optimizer.dll ==> lib/net10.0
+    ../../src/Linq.Expression.Optimizer/bin/Release/net10.0/Linq.Expression.Optimizer.xml ==> lib/net10.0
