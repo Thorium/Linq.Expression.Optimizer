@@ -234,14 +234,20 @@ module Methods =
         | ValueBool o -> if o then True' else False'
         | _ -> NoHit'
 
+    // The logical transformations below are only valid for boolean operands.
+    // On integral types ExpressionType.And/Or are bitwise (&&&/||| in F#, &/| in C#),
+    // so they must not be commuted to AndAlso/OrElse (which are boolean-only).
+    let inline internal isBooleanExpr (et:Type) =
+        Type.(=)(et,typeof<bool>)|| Type.(=)(et,typeof<Nullable<bool>>)
+
     // In ideal world "OrElse" is order-dependent: (x <> null || x.Prop)
     // and "Or" is not order-dependent: (isNull x || isNull y)
     let inline internal (|Or'|_|) (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.OrElse, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
-        | ExpressionType.Or, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
+        | ExpressionType.Or, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> Some(be.Left,be.Right)
         | ExpressionType.Conditional, IfThenElse (left, True', right) -> //if A then true else B
-            Some (left, right) 
+            Some (left, right)
         | _ -> None
 
     // In ideal world "AndAlso" is order-dependent: (isNull x && x.Prop)
@@ -249,7 +255,7 @@ module Methods =
     let inline internal (|And'|_|) (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.AndAlso, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
-        | ExpressionType.And, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
+        | ExpressionType.And, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> Some(be.Left,be.Right)
         | ExpressionType.Conditional, IfThenElse (left, right, False') -> //if A then B else true
             Some (left, right)
         | _ -> None
@@ -795,7 +801,7 @@ module Methods =
                 | _ -> 
                     // Known Null hasValue
                     // Only null case can be identified: For the non-null, it still can be some call that results to null
-                    if Type.(=)(me.Type, typeof<bool>) &&  me.Expression.Type.IsGenericType then
+                    if isBooleanExpr me.Type && me.Expression.Type.IsGenericType then
                         let ptype = me.Expression.Type.GetGenericTypeDefinition()
                         if me.Member.Name = "HasValue" && ptype = typedefof<Nullable<_>> then 
                             match me.Expression.NodeType, me.Expression with
@@ -806,7 +812,7 @@ module Methods =
                         else e
                     else e
         | ExpressionType.Call, ( :? MethodCallExpression as me) when 
-                Type.(=)(me.Type, typeof<bool>) && not (isNull me.Method) && (me.Method.Name = "get_IsNone" || me.Method.Name = "get_IsSome") && 
+                isBooleanExpr me.Type && not (isNull me.Method) && (me.Method.Name = "get_IsNone" || me.Method.Name = "get_IsSome") && 
                     me.Arguments.Count = 1 && me.Arguments.[0].NodeType = ExpressionType.Constant && me.Arguments.[0].Type.IsGenericType ->
             // Known option is none
             // Only none/null case can be identified: For the non-null, it still can be some call that results to null
@@ -1139,10 +1145,10 @@ module Methods =
             match ce.IfTrue.NodeType, ce.IfFalse.NodeType, ce.IfTrue, ce.IfFalse with
             // x ? true : false -> x
             | ExpressionType.Constant, ExpressionType.Constant, (:? ConstantExpression as t), (:? ConstantExpression as f) 
-                when Type.(=)(t.Type, typeof<bool>) && Type.(=)(f.Type, typeof<bool>) && (t.Value :?> bool) = true && (f.Value :?> bool) = false -> ce.Test
+                when isBooleanExpr t.Type && isBooleanExpr f.Type && (t.Value :?> bool) = true && (f.Value :?> bool) = false -> ce.Test
             // x ? false : true -> !x
             | ExpressionType.Constant, ExpressionType.Constant, (:? ConstantExpression as t), (:? ConstantExpression as f) 
-                when Type.(=)(t.Type, typeof<bool>) && Type.(=)(f.Type, typeof<bool>) && (t.Value :?> bool) = false && (f.Value :?> bool) = true -> Expression.Not(ce.Test) :> Expression
+                when isBooleanExpr t.Type && isBooleanExpr f.Type && (t.Value :?> bool) = false && (f.Value :?> bool) = true -> Expression.Not(ce.Test) :> Expression
             // x ? y : y -> y (when both branches are identical)
             | _ when ce.IfTrue.ToString() = ce.IfFalse.ToString() -> ce.IfTrue
             | _ -> e

@@ -1,3 +1,6 @@
+### 1.0.37 - 08/06/2026
+* Fix for bitwise operations in LINQ
+
 ### 1.0.36 - 26/05/2026
 * NET 10 version added
 

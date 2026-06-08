@@ -959,6 +959,29 @@ type MoreInternalTests (output : ITestOutputHelper) =
         let optimized4 = ExpressionOptimizer.visit test4
         optimized4.ToString() |> should equal (paramR.ToString())
 
+    [<Xunit.Fact>]
+    member _.``Bitwise And/Or on integers are not treated as logical operators`` () =
+        // GitHub issue #23: bitwise & and | on integral types (&&& / ||| in F#)
+        // must not be commuted to AndAlso/OrElse, which are boolean-only and would
+        // throw "The binary operator AndAlso is not defined for the types 'Int32'..."
+        let x = Expression.Parameter(typeof<int>, "x")
+        let seven = Expression.Constant(7)
+
+        // 7 & x must stay a bitwise And and not throw
+        let bitAnd = Expression.And(seven, x)
+        let optAnd = ExpressionOptimizer.visit bitAnd
+        optAnd.NodeType |> should equal ExpressionType.And
+
+        // 7 | x must stay a bitwise Or and not throw
+        let bitOr = Expression.Or(seven, x)
+        let optOr = ExpressionOptimizer.visit bitOr
+        optOr.NodeType |> should equal ExpressionType.Or
+
+        // Boolean non-short-circuit And/Or are still optimized (b & b -> b)
+        let b = Expression.Parameter(typeof<bool>, "b")
+        let boolAnd = ExpressionOptimizer.visit (Expression.And(b, b))
+        boolAnd.ToString() |> should equal (b.ToString())
+
     [<Xunit.Fact(Skip = "IsNullOrEmpty not in use by default")>]
     member _.``String length optimization converts to IsNullOrEmpty`` () =
         let param = Expression.Parameter(typeof<string>, "str")
