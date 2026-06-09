@@ -35,6 +35,12 @@ open BenchmarkDotNet.Attributes
 
 type Itm = {x:int}
 
+/// A value type with a settable field, for testing member-init on a
+/// null-constructor NewExpression (GitHub issue #24 regression guard).
+[<Struct>]
+type MutableStruct =
+    val mutable F : int
+
 module Queries =
     let executeExpression (e:Expression) =
         Expression.Lambda(e).Compile().DynamicInvoke() :?> System.Collections.IEnumerable |> Seq.cast |> Seq.toList
@@ -981,6 +987,77 @@ type MoreInternalTests (output : ITestOutputHelper) =
         let b = Expression.Parameter(typeof<bool>, "b")
         let boolAnd = ExpressionOptimizer.visit (Expression.And(b, b))
         boolAnd.ToString() |> should equal (b.ToString())
+
+    [<Xunit.Fact>]
+    member _.``Nullable bool logic is not oversimplified (three-valued logic)`` () =
+        // For Nullable<bool>, Kleene three-valued logic applies: when x is null,
+        // (x && !x) is null (not false) and (x || !x) is null (not true). The
+        // optimizer must therefore leave these untouched rather than fold them.
+        let x = Expression.Parameter(typeof<Nullable<bool>>, "x")
+        let notX = Expression.Not(x)
+
+        let optAnd = ExpressionOptimizer.visit (Expression.And(x, notX))
+        optAnd.NodeType |> should equal ExpressionType.And        // not folded to false
+        let optOr = ExpressionOptimizer.visit (Expression.Or(x, notX))
+        optOr.NodeType |> should equal ExpressionType.Or          // not folded to true
+        // lifted AndAlso on Nullable<bool> must also be preserved
+        let optAndAlso = ExpressionOptimizer.visit (Expression.AndAlso(x, notX))
+        optAndAlso.NodeType |> should equal ExpressionType.AndAlso
+
+        // Sanity: plain two-valued bool still folds soundly
+        let b = Expression.Parameter(typeof<bool>, "b")
+        let foldedAnd = ExpressionOptimizer.visit (Expression.AndAlso(b, Expression.Not(b)))
+        (foldedAnd :?> ConstantExpression).Value |> should equal (box false)
+        let foldedOr = ExpressionOptimizer.visit (Expression.OrElse(b, Expression.Not(b)))
+        (foldedOr :?> ConstantExpression).Value |> should equal (box true)
+
+    [<Xunit.Fact>]
+    member _.``Nullable bool conditionals are not collapsed and do not throw`` () =
+        // Regression: `simplify conditionals` must only fire for non-nullable bool.
+        // A Nullable<bool> constant can box to null, so `Value :?> bool` would throw,
+        // and collapsing `x ? true : false` to `x` would change the type bool? -> bool.
+        let x = Expression.Parameter(typeof<bool>, "x")
+        let nb (v:bool) = Expression.Constant(Nullable<bool>(v), typeof<Nullable<bool>>)
+        let nbNull = Expression.Constant(Nullable<bool>(), typeof<Nullable<bool>>)
+
+        // null branch: must not throw, must stay a conditional of type bool?
+        let c1 = ExpressionOptimizer.visit (Expression.Condition(x, nbNull, nb false))
+        c1.NodeType |> should equal ExpressionType.Conditional
+        c1.Type |> should equal typeof<Nullable<bool>>
+
+        // non-null nullable true:false must NOT collapse to x (would change type)
+        let c2 = ExpressionOptimizer.visit (Expression.Condition(x, nb true, nb false))
+        c2.Type |> should equal typeof<Nullable<bool>>
+
+        // plain bool still optimizes: x ? true : false -> x, x ? false : true -> !x
+        let c3 = ExpressionOptimizer.visit (Expression.Condition(x, Expression.Constant true, Expression.Constant false))
+        c3.ToString() |> should equal (x.ToString())
+        let c4 = ExpressionOptimizer.visit (Expression.Condition(x, Expression.Constant false, Expression.Constant true))
+        c4.NodeType |> should equal ExpressionType.Not
+
+    [<Xunit.Fact>]
+    member _.``New on a constructorless value type does not throw`` () =
+        // GitHub issue #24: `new Nullable<int>()` (F#) produces a NewExpression
+        // with a null Constructor; Expression.New(null, ...) would throw
+        // ArgumentNullException. It must be returned unchanged (a parameterless
+        // value-type construction has nothing to optimize).
+        let newNullable = Expression.New(typeof<Nullable<int>>) :> Expression
+        let optimized = ExpressionOptimizer.visit newNullable
+        optimized.NodeType |> should equal ExpressionType.New
+        optimized.Type |> should equal typeof<Nullable<int>>
+
+        // And it still evaluates to null
+        let lambda = Expression.Lambda<Func<Nullable<int>>>(optimized)
+        lambda.Compile().Invoke().HasValue |> should equal false
+
+        // It must NOT be swapped for Expression.Default: a value-type MemberInit
+        // casts its inner New back to NewExpression, which a DefaultExpression breaks.
+        let structNew = Expression.New(typeof<MutableStruct>)   // null Constructor
+        structNew.Constructor |> isNull |> should equal true
+        let binding = Expression.Bind(typeof<MutableStruct>.GetField("F"), Expression.Constant(5))
+        let mi = Expression.MemberInit(structNew, binding) :> Expression
+        let optMi = ExpressionOptimizer.visit mi   // must not throw
+        optMi.NodeType |> should equal ExpressionType.MemberInit
 
     [<Xunit.Fact(Skip = "IsNullOrEmpty not in use by default")>]
     member _.``String length optimization converts to IsNullOrEmpty`` () =

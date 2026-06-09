@@ -234,17 +234,21 @@ module Methods =
         | ValueBool o -> if o then True' else False'
         | _ -> NoHit'
 
-    // The logical transformations below are only valid for boolean operands.
-    // On integral types ExpressionType.And/Or are bitwise (&&&/||| in F#, &/| in C#),
-    // so they must not be commuted to AndAlso/OrElse (which are boolean-only).
+    // The boolean-algebra transformations below are only logically sound for plain
+    // two-valued bool, so And'/Or' deliberately match nothing else:
+    //  * On integral types ExpressionType.And/Or are bitwise (&&&/||| in F#, &/| in C#).
+    //  * On Nullable<bool> they follow three-valued (Kleene) logic, where laws such as
+    //    (x && !x) = false or (x || !x) = true do NOT hold - a null operand yields null,
+    //    not false/true. Even the lifted AndAlso/OrElse can carry a Nullable<bool> result.
+    // Both cases are excluded here and left untouched rather than being oversimplified.
     let inline internal isBooleanExpr (et:Type) =
-        Type.(=)(et,typeof<bool>)|| Type.(=)(et,typeof<Nullable<bool>>)
+        Type.(=)(et, typeof<bool>)
 
     // In ideal world "OrElse" is order-dependent: (x <> null || x.Prop)
     // and "Or" is not order-dependent: (isNull x || isNull y)
     let inline internal (|Or'|_|) (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.OrElse, ( :? BinaryExpression as be) -> Some(be.Left,be.Right)
+        | ExpressionType.OrElse, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> Some(be.Left,be.Right)
         | ExpressionType.Or, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> Some(be.Left,be.Right)
         | ExpressionType.Conditional, IfThenElse (left, True', right) -> //if A then true else B
             Some (left, right)
@@ -254,7 +258,7 @@ module Methods =
     // and "And" is not order-dependent: (isNull x && isNull y)
     let inline internal (|And'|_|) (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.AndAlso, ( :? BinaryExpression as be)  -> Some(be.Left,be.Right)
+        | ExpressionType.AndAlso, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> Some(be.Left,be.Right)
         | ExpressionType.And, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> Some(be.Left,be.Right)
         | ExpressionType.Conditional, IfThenElse (left, right, False') -> //if A then B else true
             Some (left, right)
@@ -1141,14 +1145,14 @@ module Methods =
     /// x ? true : false -> x, x ? false : true -> !x, x ? y : y -> y
     let ``simplify conditionals`` (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.Conditional, (:? ConditionalExpression as ce) -> 
-            match ce.IfTrue.NodeType, ce.IfFalse.NodeType, ce.IfTrue, ce.IfFalse with
-            // x ? true : false -> x
-            | ExpressionType.Constant, ExpressionType.Constant, (:? ConstantExpression as t), (:? ConstantExpression as f) 
-                when isBooleanExpr t.Type && isBooleanExpr f.Type && (t.Value :?> bool) = true && (f.Value :?> bool) = false -> ce.Test
-            // x ? false : true -> !x
-            | ExpressionType.Constant, ExpressionType.Constant, (:? ConstantExpression as t), (:? ConstantExpression as f) 
-                when isBooleanExpr t.Type && isBooleanExpr f.Type && (t.Value :?> bool) = false && (f.Value :?> bool) = true -> Expression.Not(ce.Test) :> Expression
+        | ExpressionType.Conditional, (:? ConditionalExpression as ce) ->
+            // True'/False' (via the ValueBool active pattern) match only non-nullable
+            // bool constants and unbox safely, so Nullable<bool> branches fall through
+            // untouched - no value casting, no null-unbox risk, and the bool? result
+            // type is preserved.
+            match ce.IfTrue, ce.IfFalse with
+            | True', False' -> ce.Test                                  // x ? true : false -> x
+            | False', True' -> Expression.Not(ce.Test) :> Expression    // x ? false : true -> !x
             // x ? y : y -> y (when both branches are identical)
             | _ when ce.IfTrue.ToString() = ce.IfFalse.ToString() -> ce.IfTrue
             | _ -> e
@@ -1274,8 +1278,17 @@ and internal visitchilds (e:Expression): Expression =
     | ExpressionType.Conditional, (:? ConditionalExpression as e) -> 
         let v1, v2, v3 = visit' e.Test, visit' e.IfTrue, visit' e.IfFalse
         if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
-    | ExpressionType.New, (:? NewExpression as e) -> 
-        if isNull e.Members then
+    | ExpressionType.New, (:? NewExpression as e) ->
+        if isNull e.Constructor then
+            // Value types created via their implicit parameterless constructor
+            // (e.g. F#'s `new Nullable<int>()`) carry no ConstructorInfo, so
+            // Expression.New(null, ...) would throw ArgumentNullException. Such a
+            // node is parameterless (no arguments to recurse into), so return it
+            // unchanged. Note: must NOT swap in Expression.Default here - the inner
+            // New of a value-type MemberInit/ListInit is cast back to NewExpression
+            // below, and a DefaultExpression would break that cast. (GitHub issue #24)
+            upcast e
+        elif isNull e.Members then
             upcast Expression.New(e.Constructor, e.Arguments |> Seq.map visit')
         else
             upcast Expression.New(e.Constructor, (e.Arguments |> Seq.map visit'), e.Members)

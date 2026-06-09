@@ -1,3 +1,6 @@
+### 1.0.38 - 09/06/2026
+* Fix for new Nullable<T>() (constructorless value types)
+
 ### 1.0.37 - 08/06/2026
 * Fix for bitwise operations in LINQ
 
