@@ -1,3 +1,6 @@
+### 1.0.39 - 11/06/2026
+* Fixes for some edge cases found
+
 ### 1.0.38 - 09/06/2026
 * Fix for new Nullable<T>() (constructorless value types)
 

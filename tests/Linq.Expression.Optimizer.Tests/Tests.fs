@@ -35,6 +35,11 @@ open BenchmarkDotNet.Attributes
 
 type Itm = {x:int}
 
+/// Name intentionally matches the optimizer's anonymous-type heuristic, to test
+/// the C#-anonymous-type member-access reduction on a concrete type.
+type AnonymousObjectTest (name: string) =
+    member _.Name = name
+
 /// A value type with a settable field, for testing member-init on a
 /// null-constructor NewExpression (GitHub issue #24 regression guard).
 [<Struct>]
@@ -1073,6 +1078,103 @@ type MoreInternalTests (output : ITestOutputHelper) =
         
         // Should contain IsNullOrEmpty method call
         optimized.ToString().Contains "IsNullOrEmpty" |> should equal true
+
+    // ---- Regression tests for 2026-06 optimizer fixes ----
+
+    [<Xunit.Fact>]
+    member _.``Constant-left addition keeps the variable: (2+x)+2 = x+4`` () =
+        let x = Expression.Parameter(typeof<int>, "x")
+        let e = Expression.Add(Expression.Add(Expression.Constant 2, x), Expression.Constant 2)
+        let lam = Expression.Lambda<Func<int,int>>(e, x)
+        let opt = ExpressionOptimizer.visitTyped lam
+        opt.ToString() |> should equal "x => (x + 4)"
+        opt.Compile().Invoke 10 |> should equal (lam.Compile().Invoke 10)
+
+    [<Xunit.Fact>]
+    member _.``Constant-left multiplication keeps the variable: (2*x)*3 = x*6`` () =
+        let x = Expression.Parameter(typeof<int>, "x")
+        let e = Expression.Multiply(Expression.Multiply(Expression.Constant 2, x), Expression.Constant 3)
+        let lam = Expression.Lambda<Func<int,int>>(e, x)
+        let opt = ExpressionOptimizer.visitTyped lam
+        opt.ToString() |> should equal "x => (x * 6)"
+        opt.Compile().Invoke 10 |> should equal (lam.Compile().Invoke 10)
+
+    [<Xunit.Fact>]
+    member _.``Zero minus x is not simplified to x`` () =
+        let x = Expression.Parameter(typeof<int>, "x")
+        let e = Expression.Subtract(Expression.Constant 0, x)
+        let lam = Expression.Lambda<Func<int,int>>(e, x)
+        (ExpressionOptimizer.visitTyped lam).Compile().Invoke 10 |> should equal (-10)
+
+    [<Xunit.Fact>]
+    member _.``Nullable inequality pair is not rewritten to a tautology`` () =
+        // xn >= 5 || xn <= 5 is FALSE for null, so it must not become `true`
+        let xn = Expression.Parameter(typeof<Nullable<int>>, "xn")
+        let c5 = Expression.Constant(Nullable 5, typeof<Nullable<int>>)
+        let e = Expression.OrElse(Expression.GreaterThanOrEqual(xn, c5), Expression.LessThanOrEqual(xn, c5))
+        let lam = Expression.Lambda<Func<Nullable<int>, bool>>(e, xn)
+        let opt = ExpressionOptimizer.visitTyped lam
+        opt.Compile().Invoke(Nullable()) |> should equal false
+        // ...while the same shape on plain int still folds to true
+        let x = Expression.Parameter(typeof<int>, "x")
+        let i5 = Expression.Constant 5
+        let e2 = Expression.OrElse(Expression.GreaterThanOrEqual(x, i5), Expression.LessThanOrEqual(x, i5))
+        (ExpressionOptimizer.visit e2).ToString() |> should equal "True"
+
+    [<Xunit.Fact>]
+    member _.``Checked constant folding preserves overflow`` () =
+        // in range: folds
+        let ok = Expression.AddChecked(Expression.Constant 2, Expression.Constant 3)
+        (ExpressionOptimizer.visit ok).ToString() |> should equal "5"
+        // overflow: left for the runtime to throw
+        let e = Expression.AddChecked(Expression.Constant Int32.MaxValue, Expression.Constant 1)
+        let opt = ExpressionOptimizer.visit e
+        let f = Expression.Lambda<Func<int>>(opt).Compile()
+        (fun () -> f.Invoke() |> ignore) |> shouldFail
+
+    [<Xunit.Fact>]
+    member _.``Constant division by zero is not folded at optimization time`` () =
+        let e = Expression.Divide(Expression.Constant 1, Expression.Constant 0)
+        let opt = ExpressionOptimizer.visit e   // must not throw here
+        let f = Expression.Lambda<Func<int>>(opt).Compile()
+        (fun () -> f.Invoke() |> ignore) |> shouldFail
+
+    [<Xunit.Fact>]
+    member _.``Nested member accesses are matched as duplicates`` () =
+        let d = Expression.Parameter(typeof<DateTime>, "d")
+        let day () = Expression.Property(Expression.Property(d, "Date"), "Day")
+        let cmp () = Expression.Equal(day(), Expression.Constant 5)
+        let e = Expression.AndAlso(cmp(), cmp())
+        (ExpressionOptimizer.visit e).ToString() |> should equal "(d.Date.Day == 5)"
+
+    [<Xunit.Fact>]
+    member _.``CSharp-style anonymous type member access is reduced`` () =
+        let s = Expression.Parameter(typeof<string>, "s")
+        let ctor = typeof<AnonymousObjectTest>.GetConstructor([| typeof<string> |])
+        let nameProp = typeof<AnonymousObjectTest>.GetProperty("Name")
+        let ne = Expression.New(ctor, [| s :> Expression |], [| nameProp :> Reflection.MemberInfo |])
+        let access = Expression.Property(ne, nameProp) :> Expression
+        (ExpressionOptimizer.visit access) |> should equal (s :> Expression)
+
+    [<Xunit.Fact>]
+    member _.``NaN-capable float identities are left alone`` () =
+        let d = Expression.Parameter(typeof<float>, "d")
+        // d = d is false for NaN; d - d and d * 0.0 are NaN for NaN/Infinity
+        (ExpressionOptimizer.visit (Expression.Equal(d, d))).NodeType |> should equal ExpressionType.Equal
+        (ExpressionOptimizer.visit (Expression.Subtract(d, d))).NodeType |> should equal ExpressionType.Subtract
+        (ExpressionOptimizer.visit (Expression.Multiply(d, Expression.Constant 0.0))).NodeType |> should equal ExpressionType.Multiply
+        // ...but int versions still fold
+        let x = Expression.Parameter(typeof<int>, "x")
+        (ExpressionOptimizer.visit (Expression.Subtract(x, x))).ToString() |> should equal "0"
+
+    [<Xunit.Fact>]
+    member _.``Tuple ItemN access on a New expression is reduced to the argument`` () =
+        let ctor = typeof<Tuple<int>>.GetConstructor([| typeof<int> |])
+        let ne = Expression.New(ctor, [| Expression.Constant 1 :> Expression |])
+        let item1 = typeof<Tuple<int>>.GetProperty("Item1")
+        let acc = Expression.Property(ne, item1) :> Expression
+        (ExpressionOptimizer.visit acc).ToString() |> should equal "1"
+
 
 
 [<MemoryDiagnoser>]
