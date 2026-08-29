@@ -55,9 +55,9 @@ module Methods =
                          match parentExpr.NodeType, parentExpr with
                          | ExpressionType.MemberAccess, (:? MemberExpression as mainNode) ->
                              match mainNode.Member with
-                             | :? FieldInfo as fieldInfo when not(isNull(fieldInfo)) ->
+                             | :? FieldInfo as fieldInfo when not(isNull fieldInfo) ->
                                 fieldInfo.GetValue ce.Value
-                             | :? PropertyInfo as propInfo when not(isNull(propInfo)) ->
+                             | :? PropertyInfo as propInfo when not(isNull propInfo) ->
                                 propInfo.GetValue(ce.Value, null)
                              | _ -> ce.Value
                          // UnaryExpression convert
@@ -167,8 +167,8 @@ module Methods =
         match e.NodeType, e with
         | ExpressionType.Conditional,        (:? ConditionalExpression as ce) -> 
             match ce.Test.NodeType, ce.Test with // For now, only direct booleans conditions are optimized to select query:
-            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box(true) -> ce.IfTrue
-            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box(false) -> ce.IfFalse
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box true -> ce.IfTrue
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box false -> ce.IfFalse
             | _ -> e
         | _ -> e
 
@@ -177,8 +177,8 @@ module Methods =
         match e.NodeType, e with
         | ExpressionType.Not, (:? UnaryExpression as ue) -> 
             match ue.Operand.NodeType, ue.Operand with
-            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box(false) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box(true) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box false -> Expression.Constant(true, typeof<bool>) :> Expression
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box true -> Expression.Constant(false, typeof<bool>) :> Expression
             | _ -> e
         | _ -> e
 
@@ -218,7 +218,7 @@ module Methods =
     [<return: Struct>]
     let inline internal (|Not'|_|) (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.Not, (:? UnaryExpression as ue) -> ValueSome(ue.Operand)
+        | ExpressionType.Not, (:? UnaryExpression as ue) -> ValueSome ue.Operand
         | _ -> ValueNone
 
     let inline internal (|True'|False'|NoHit'|) expr =
@@ -495,7 +495,7 @@ module Methods =
 
     let commute_absorb = fun exp ->
         match exp with
-        | And' (innercontent) ->
+        | And' innercontent ->
             match innercontent with
             | (Or'(_,Or'(p,_)), p1)
             | (Or'(Or'(p,_), _), p1)
@@ -517,7 +517,7 @@ module Methods =
             | (And'((Or'(_,p1)),p2), p) 
                 when propertyMatch p p1  -> Expression.AndAlso(p,p2) :> Expression
             | _ -> exp
-        | Or' (innercontent) ->
+        | Or' innercontent ->
             match innercontent with
             | (p, Or'(p2, And' (p1, _)))
             | (p, Or'(p2, And' (_, p1)))
@@ -544,7 +544,7 @@ module Methods =
 
         // duplicate looking active pattern "when" guards are needed for some weird F# compiler reason being slow & eating stack & memory if they are not there
         match exp with
-        | And' (innercontent) ->
+        | And' innercontent ->
             // All the following are decorated with And'( ... )
             match innercontent with
             | (p, Or' (Not' p1, p2))  
@@ -554,7 +554,7 @@ module Methods =
             | (Or' (p2, Not' p1), p)  
                 when propertyMatch p p1 -> Expression.AndAlso(p2, p) :> Expression
             | _ -> exp
-        | Or' (innercontent) ->
+        | Or' innercontent ->
             // All the following are decorated with Or'( ... )
             match innercontent with
 
@@ -628,7 +628,7 @@ module Methods =
     // This is to fix some part of pure associate being disabled
     let associate_complement = fun exp ->
         match exp with
-        | And' (innercontent) ->
+        | And' innercontent ->
             // All the following are decorated with And'( ... )
             match innercontent with
             |(Not' (And' (p, p2)), p1) 
@@ -642,7 +642,7 @@ module Methods =
             |(p1, And' (Not' p, _))
                 when propertyMatch p p1 -> Expression.Constant(false, typeof<bool>) :> Expression
             | _ -> exp
-        | Or' (innercontent) ->
+        | Or' innercontent ->
             // All the following are decorated with Or'( ... )
             match innercontent with
             |(Not' (Or' (p2, p)), p1) 
@@ -824,7 +824,7 @@ module Methods =
             when not(isNull me || isNull me.Expression) -> 
                 match ``constant basic type`` me me.Expression with
                 | Some x -> Expression.Constant(x, me.Type) :> Expression
-                | _ -> 
+                | None -> 
                     // Known Null hasValue
                     // Only null case can be identified: For the non-null, it still can be some call that results to null
                     if isBooleanExpr me.Type && me.Expression.Type.IsGenericType then
@@ -1319,11 +1319,9 @@ let mutable reductionMethods = [
 /// Do reductions just for a current node?
 let rec doReduction (exp:Expression) =
     if exp = Unchecked.defaultof<Expression> then exp else 
-    let opt = Seq.fold(fun acc f -> f(acc)) exp reductionMethods
+    let opt = Seq.fold(fun acc f -> f acc) exp reductionMethods
 
-    match opt = exp with
-    | true -> exp
-    | false -> doReduction opt
+    if opt = exp then exp else doReduction opt
 
 // ------------------------------------- //
 
@@ -1376,7 +1374,7 @@ and internal visitchilds (e:Expression): Expression =
         else 
         upcast Expression.Lambda(e.Type, visit' b, e.Parameters) // intentional revisit
     | ExpressionType.TypeIs, (:? TypeBinaryExpression as e)  -> 
-        let v = visit'(e.Expression)
+        let v = visit' e.Expression
         if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
     | ExpressionType.Conditional, (:? ConditionalExpression as e) -> 
         let v1, v2, v3 = visit' e.Test, visit' e.IfTrue, visit' e.IfFalse

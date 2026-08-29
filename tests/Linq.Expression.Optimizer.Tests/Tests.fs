@@ -221,7 +221,7 @@ module Queries =
     
     let qry16 (arr:int list) =
         let toImts x = {x = x}
-        let asItms = arr |> List.map(toImts)
+        let asItms = arr |> List.map toImts
         let arr2 = asItms.AsQueryable()
         let onlyX = true
         query{
@@ -305,7 +305,7 @@ module Queries =
     
     let testLt (xs:int[]) qry = 
         let expr = xs |> Seq.toList |> qry |> (fun (q:IQueryable<'a>) -> q.Expression)
-        let optimized = ExpressionOptimizer.visit(expr)
+        let optimized = ExpressionOptimizer.visit expr
         let o = optimized.ToString()
         let o2 = o.ToString()
         printfn "%s: %s" (qry.ToString().Replace("<StartupCode$Linq-Expression-Optimizer-Tests>.$Tests+", "")) o2
@@ -313,7 +313,7 @@ module Queries =
 
     let testLteq (xs:int[]) qry = 
         let expr = xs |> Seq.toList |> qry |> (fun (q:IQueryable<'a>) -> q.Expression)
-        let optimized = ExpressionOptimizer.visit(expr)
+        let optimized = ExpressionOptimizer.visit expr
         should lessThanOrEqualTo (expr.ToString().Length) (optimized.ToString().Length)
 
 open Queries
@@ -1169,9 +1169,9 @@ type MoreInternalTests (output : ITestOutputHelper) =
 
     [<Xunit.Fact>]
     member _.``Tuple ItemN access on a New expression is reduced to the argument`` () =
-        let ctor = typeof<Tuple<int>>.GetConstructor([| typeof<int> |])
+        let ctor = typeof<Tuple<int>>.GetConstructor [| typeof<int> |]
         let ne = Expression.New(ctor, [| Expression.Constant 1 :> Expression |])
-        let item1 = typeof<Tuple<int>>.GetProperty("Item1")
+        let item1 = typeof<Tuple<int>>.GetProperty "Item1"
         let acc = Expression.Property(ne, item1) :> Expression
         (ExpressionOptimizer.visit acc).ToString() |> should equal "1"
 
