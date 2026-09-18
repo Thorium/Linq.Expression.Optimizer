@@ -161,7 +161,7 @@ module Queries =
                 (query {
                     for y in arr.AsQueryable() do
                     exists (x = -y) })
-            select (x)
+            select x
         }
     
     let qry11 (arr:int list) =
@@ -181,11 +181,11 @@ module Queries =
         query{
             for x in arr.AsQueryable() do
             where (cond1 = 12)
-            where (cond1 = 12 && true && f(x) >  -1)
+            where (cond1 = 12 && true && f x >  -1)
             let c = 2
             let y, y2 = cond1, x
             where (cond1 = 12)
-            let tmp = y+c+f(x)
+            let tmp = y+c+f x
             where (tmp>1)
             sortByNullable (Nullable(x))
         }
@@ -216,7 +216,7 @@ module Queries =
             for x in arr.AsQueryable() do
             where ((not ((xx :?> Nullable<int>).HasValue) || 
                     (xx :?> Nullable<int>).Value > 2) && (y.IsNone || (y.Value > x)) && true)
-            select (1)
+            select 1
         }
     
     let qry16 (arr:int list) =
@@ -248,7 +248,7 @@ module Queries =
             for x in arr.AsQueryable() do
             where ((not ((xx :?> Nullable<int>).HasValue) || 
                     (xx :?> Nullable<int>).Value > 2) && (y.IsNone || (y.Value > x)) && true)
-            select (1)
+            select 1
         }
 
     let qry19 (arr:int list) =
@@ -296,7 +296,7 @@ module Queries =
             for x in arr.AsQueryable() do
             where ((x % 1) + (x * 1 * 1) + (x / 1 / 1) > 0)
             // x mod 1 = 0, so (0 + x + x)
-            select (x)
+            select x
         }
 
     let testEq (xs:int[]) qry = 
@@ -1067,7 +1067,7 @@ type MoreInternalTests (output : ITestOutputHelper) =
     [<Xunit.Fact(Skip = "IsNullOrEmpty not in use by default")>]
     member _.``String length optimization converts to IsNullOrEmpty`` () =
         let param = Expression.Parameter(typeof<string>, "str")
-        let lengthProperty = typeof<string>.GetProperty("Length")
+        let lengthProperty = typeof<string>.GetProperty "Length"
         let lengthAccess = Expression.MakeMemberAccess(param, lengthProperty)
         let zero = Expression.Constant(0)
         
@@ -1150,8 +1150,8 @@ type MoreInternalTests (output : ITestOutputHelper) =
     [<Xunit.Fact>]
     member _.``CSharp-style anonymous type member access is reduced`` () =
         let s = Expression.Parameter(typeof<string>, "s")
-        let ctor = typeof<AnonymousObjectTest>.GetConstructor([| typeof<string> |])
-        let nameProp = typeof<AnonymousObjectTest>.GetProperty("Name")
+        let ctor = typeof<AnonymousObjectTest>.GetConstructor [| typeof<string> |]
+        let nameProp = typeof<AnonymousObjectTest>.GetProperty "Name"
         let ne = Expression.New(ctor, [| s :> Expression |], [| nameProp :> Reflection.MemberInfo |])
         let access = Expression.Property(ne, nameProp) :> Expression
         (ExpressionOptimizer.visit access) |> should equal (s :> Expression)

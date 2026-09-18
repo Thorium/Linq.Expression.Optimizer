@@ -11,8 +11,10 @@
 // (This is the original behaviour of ProjectScaffold prior to multi-project support)
 let referenceBinaries = []
 // Website location for the generated documentation
+[<Literal>]
 let website = "/Linq.Expression.Optimizer"
 
+[<Literal>]
 let githubLink = "https://github.com/Thorium/Linq.Expression.Optimizer"
 
 // Specify more information about your project
@@ -51,10 +53,11 @@ let output     = __SOURCE_DIRECTORY__ @@ "../output"
 let files      = __SOURCE_DIRECTORY__ @@ "../files"
 let templates  = __SOURCE_DIRECTORY__ @@ "templates"
 let formatting = __SOURCE_DIRECTORY__ @@ "../../packages/build/FSharp.Formatting/"
+[<Literal>]
 let docTemplate = "docpage.cshtml"
 
 // Where to look for *.csproj templates (in this order)
-let layoutRootsAll = new System.Collections.Generic.Dictionary<string, string list>()
+let layoutRootsAll = System.Collections.Generic.Dictionary<string, string list>()
 layoutRootsAll.Add("en",[ templates; formatting @@ "templates"
                           formatting @@ "templates/reference" ])
 subDirectories (directoryInfo templates)
@@ -81,7 +84,7 @@ let binaries =
     let conventionBased = 
         directoryInfo bin 
         |> subDirectories
-        |> Array.map (fun d -> d.FullName @@ (sprintf "%s.dll" d.Name))
+        |> Array.map (fun d -> d.FullName @@ $"%s{d.Name}.dll")
         |> List.ofArray
 
     conventionBased @ manuallyAdded
@@ -121,7 +124,7 @@ let buildDocumentation () =
 
   let subdirs = Directory.EnumerateDirectories(content, "*", SearchOption.TopDirectoryOnly)
   for dir in subdirs do
-    let dirname = (new DirectoryInfo(dir)).Name
+    let dirname = (DirectoryInfo(dir)).Name
     let layoutRoots =
         // Check whether this directory name is for a specific language
         let key = layoutRootsAll.Keys

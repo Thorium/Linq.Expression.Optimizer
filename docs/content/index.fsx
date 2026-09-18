@@ -106,10 +106,10 @@ let xs = [1;2;3;4;5].AsQueryable()
 let qry =
     query{
         for x in xs do
-        select (not(not(not(x>3))) && true)
+        select ((not(x>3)))
     }
     
-let optimized = ExpressionOptimizer.visit(qry.Expression)
+let optimized = ExpressionOptimizer.visit qry.Expression
 
 
 (**

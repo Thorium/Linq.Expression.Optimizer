@@ -747,7 +747,7 @@ module Methods =
             | _ -> e
         | noHit -> noHit
 
-    let private checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) =
+    let private checkMatch leftop leftA leftB rightop rightA rightB =
         (
             (leftop = ExpressionType.Equal && rightop = ExpressionType.NotEqual) ||
             (leftop = ExpressionType.NotEqual && rightop = ExpressionType.Equal)
@@ -763,8 +763,8 @@ module Methods =
     /// As checkMatch, but for Or-rewrites to `true`: the inequality pairs (x < a || x >= a)
     /// are NOT exhaustive for nullable/float operands (null and NaN make both sides false),
     /// whereas the Equal/NotEqual pair stays sound (null <> a and NaN <> a are true).
-    let private checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) =
-        checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) &&
+    let private checkMatchOr leftop leftA leftB rightop rightA rightB =
+        checkMatch leftop leftA leftB rightop rightA rightB &&
         (leftop = ExpressionType.Equal || leftop = ExpressionType.NotEqual
             || not(isThreeValuedComparison leftA leftB))
 
@@ -775,44 +775,44 @@ module Methods =
         | And' inner ->
 
             match inner with
-            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), And'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), And'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(_, ComparisonExpression (rightop, rightA, rightB))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(ComparisonExpression (rightop, rightA, rightB),_), _)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(ComparisonExpression (rightop, rightA, rightB),_))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(_,ComparisonExpression (rightop, rightA, rightB)))) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And'(And'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And'(And'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And'(_, And'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
-            | (And'(_, And'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when checkMatch(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(_, ComparisonExpression (rightop, rightA, rightB))) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(ComparisonExpression (rightop, rightA, rightB),_), _)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(ComparisonExpression (rightop, rightA, rightB),_))) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(_,ComparisonExpression (rightop, rightA, rightB)))) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And'(And'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And'(And'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And'(_, And'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
+            | (And'(_, And'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when checkMatch leftop leftA leftB rightop rightA rightB -> Expression.Constant(false, typeof<bool>) :> Expression
             | _ -> e
         | Or' inner ->
 
             match inner with
-            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(_, ComparisonExpression (rightop, rightA, rightB))) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(ComparisonExpression (rightop, rightA, rightB),_), _)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(ComparisonExpression (rightop, rightA, rightB),_))) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(_,ComparisonExpression (rightop, rightA, rightB)))) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or'(Or'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or'(Or'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or'(_, Or'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
-            | (Or'(_, Or'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr(leftop, leftA, leftB, rightop, rightA, rightB) -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(_, ComparisonExpression (rightop, rightA, rightB))) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(ComparisonExpression (rightop, rightA, rightB),_), _)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(ComparisonExpression (rightop, rightA, rightB),_))) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(_,ComparisonExpression (rightop, rightA, rightB)))) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(Or'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(Or'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(_, Or'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
+            | (Or'(_, Or'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when checkMatchOr leftop leftA leftB rightop rightA rightB -> Expression.Constant(true, typeof<bool>) :> Expression
             | _ -> e
         | noHit -> noHit
 
@@ -1317,6 +1317,7 @@ let mutable reductionMethods = [
      Methods.deMorgan; Methods.balancetree]
 
 /// Do reductions just for a current node?
+[<TailCall>]
 let rec doReduction (exp:Expression) =
     if exp = Unchecked.defaultof<Expression> then exp else 
     let opt = Seq.fold(fun acc f -> f acc) exp reductionMethods

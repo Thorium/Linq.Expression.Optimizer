@@ -31,23 +31,30 @@ Target.initEnvironment()
 // --------------------------------------------------------------------------------------
 // Project information
 
+[<Literal>]
 let project = "Linq.Expression.Optimizer"
 
+[<Literal>]
 let summary = "Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations."
 
+[<Literal>]
 let description = "Lightweight optimizer of System.Linq.Expression expressions. Just basic boolean algebra and reductions, constant and tuple/anonymous type eliminations. For side-effect free Expressions. No compilation-subjective optimizations. This is meant to be used with expressions that are not compiled but transferred to other domain."
 
 let authors = [ "Tuomas Hietanen" ]
 
+[<Literal>]
 let tags = "LINQ, Expression, Expressions, Expression tree, expressiontree, expression-tree, IQueryable, System.Linq.Expressions, optimise, optimize, compile, boolean, algebra, simplification, deMorgan, reduction, optimizer, optimiser, tree"
 
+[<Literal>]
 let solutionFile = "Linq.Expression.Optimizer.sln"
 
 let mainProject = "src" </> "Linq.Expression.Optimizer" </> "Linq.Expression.Optimizer.fsproj"
 
 // Git configuration
+[<Literal>]
 let gitOwner = "Thorium"
 let gitHome = sprintf "%s/%s" "https://github.com" gitOwner
+[<Literal>]
 let gitName = "Linq.Expression.Optimizer"
 let gitRaw = Environment.environVarOrDefault "gitRaw" "https://raw.githubusercontent.com/Thorium"
 
