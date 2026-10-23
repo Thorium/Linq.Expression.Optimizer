@@ -702,51 +702,92 @@ module Methods =
             -> Expression.AndAlso(Expression.AndAlso(Expression.AndAlso(p1, p2), Expression.AndAlso(p3, p4)), Expression.AndAlso(Expression.AndAlso(p5, p6), Expression.AndAlso(p7, p8))) :> Expression
         | noHit -> noHit
 
+    let private isComparison (nt: ExpressionType) =
+        match nt with
+        | ExpressionType.LessThan | ExpressionType.LessThanOrEqual
+        | ExpressionType.GreaterThan | ExpressionType.GreaterThanOrEqual
+        | ExpressionType.Equal | ExpressionType.NotEqual -> true
+        | _ -> false
+
+    /// One comparison operator over matching operands.
+    let private sameComparison (a: Expression) (b: Expression) =
+        isComparison a.NodeType && a.NodeType = b.NodeType &&
+            match a, b with
+            | (:? BinaryExpression as a), (:? BinaryExpression as b) -> propertyMatch a.Left b.Left && propertyMatch a.Right b.Right
+            | _ -> false
+
+    /// The operands of an And' (isAnd) or Or' link.
+    let private chainLink isAnd (e: Expression) =
+        match e with
+        | And' (l, r) when isAnd -> ValueSome struct(l, r)
+        | Or' (l, r) when not isAnd -> ValueSome struct(l, r)
+        | _ -> ValueNone
+
+    /// The link rebuilt over new operands, keeping its kind (AndAlso, And, or a conditional).
+    let private rebuildLink isAnd (link: Expression) (l: Expression) (r: Expression) : Expression =
+        match link with
+        | :? ConditionalExpression as ce when isAnd -> upcast ce.Update(l, r, ce.IfFalse)
+        | :? ConditionalExpression as ce -> upcast ce.Update(l, ce.IfTrue, r)
+        | :? BinaryExpression as be -> upcast be.Update(l, be.Conversion, r)
+        | _ -> link
+
+    /// The chain with one operand that is the comparison c taken out, at most depth links down.
+    let rec private dropComparison isAnd depth (c: Expression) (e: Expression) : Expression voption =
+        if depth = 0 then ValueNone else
+        match chainLink isAnd e with
+        | ValueNone -> ValueNone
+        | ValueSome struct(l, r) ->
+            if sameComparison c l then ValueSome r
+            elif sameComparison c r then ValueSome l
+            else
+                match dropComparison isAnd (depth - 1) c l with
+                | ValueSome l' -> ValueSome (rebuildLink isAnd e l' r)
+                | ValueNone ->
+                    match dropComparison isAnd (depth - 1) c r with
+                    | ValueSome r' -> ValueSome (rebuildLink isAnd e l r')
+                    | ValueNone -> ValueNone
+
+    /// The link e = left op right with the first comparison found in candidate (a
+    /// part of the left chain, at most depth links down) taken out of the right
+    /// side; only a right side that is that comparison itself when the link does
+    /// not short-circuit.
+    let rec private dropRepeated isAnd shortCircuit depth (e: Expression) (left: Expression) (right: Expression) (candidate: Expression) : Expression voption =
+        if isComparison candidate.NodeType then
+            if sameComparison candidate right then ValueSome left
+            elif not shortCircuit then ValueNone
+            else
+                match dropComparison isAnd 2 candidate right with
+                | ValueSome rest -> ValueSome (rebuildLink isAnd e left rest)
+                | ValueNone -> ValueNone
+        elif depth = 0 then ValueNone
+        else
+            match chainLink isAnd candidate with
+            | ValueSome struct(l, r) ->
+                match dropRepeated isAnd shortCircuit (depth - 1) e left right l with
+                | ValueNone -> dropRepeated isAnd shortCircuit (depth - 1) e left right r
+                | found -> found
+            | ValueNone -> ValueNone
+
     // A = "x" && A = "x" ->  A = "x"
+    // A && (B && A) -> A && B, A || (B || A) -> A || B
+    /// The later of two equal comparisons in one And'/Or' chain goes. Behind a
+    /// short-circuit link (AndAlso, OrElse, a conditional) the right side runs only
+    /// once the left side is true (false for Or'), so a comparison the left chain
+    /// already holds is true (false) there. The earlier one stays, so nothing that
+    /// was guarded by it runs ahead of it. Behind And/Or the right side runs
+    /// regardless, and taking a comparison out of it would unguard what followed
+    /// it there, so only a right side that is the comparison itself goes.
     let ``remove duplicate condition`` (e:Expression) =
-        // How deep we want to visit the tree? This is only 3 nodes.
-        match e with 
-        | And' inner ->
-            match inner with
-            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), And'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), And'(_,ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And' (ComparisonExpression (leftop, leftA, leftB), _), And'(_,ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And' (_, ComparisonExpression (leftop, leftA, leftB)), And'(_, ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(ComparisonExpression (rightop, rightA, rightB),_), _)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), And'(And'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(ComparisonExpression (rightop, rightA, rightB),_))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), And'(_, And'(_,ComparisonExpression (rightop, rightA, rightB)))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And'(And'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And'(And'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And'(_, And'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (And'(_, And'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | _ -> e
-        | Or' inner ->
-            match inner with
-            | (ComparisonExpression (leftop, leftA, leftB), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(ComparisonExpression (rightop, rightA, rightB),_)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or' (ComparisonExpression (leftop, leftA, leftB), _), Or'(_,ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or' (_, ComparisonExpression (leftop, leftA, leftB)), Or'(_, ComparisonExpression (rightop, rightA, rightB))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(ComparisonExpression (rightop, rightA, rightB),_), _)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(Or'(_,ComparisonExpression (rightop, rightA, rightB)), _)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(ComparisonExpression (rightop, rightA, rightB),_))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (ComparisonExpression (leftop, leftA, leftB), Or'(_, Or'(_,ComparisonExpression (rightop, rightA, rightB)))) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or'(Or'(ComparisonExpression (leftop, leftA, leftB), _), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or'(Or'(_, ComparisonExpression (leftop, leftA, leftB)), _), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or'(_, Or'(ComparisonExpression (leftop, leftA, leftB), _)), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | (Or'(_, Or'(_, ComparisonExpression (leftop, leftA, leftB))), ComparisonExpression (rightop, rightA, rightB)) when (leftop = rightop && propertyMatch leftA rightA && propertyMatch leftB rightB) -> fst inner
-            | _ -> e
-        | noHit -> noHit
+        // How deep we want to visit the tree? Two links down on each side.
+        let shortCircuit = e.NodeType <> ExpressionType.And && e.NodeType <> ExpressionType.Or
+        let found =
+            match e with
+            | And' (left, right) -> dropRepeated true shortCircuit 2 e left right left
+            | Or' (left, right) -> dropRepeated false shortCircuit 2 e left right left
+            | _ -> ValueNone
+        match found with
+        | ValueSome reduced -> reduced
+        | ValueNone -> e
 
     let private checkMatch leftop leftA leftB rightop rightA rightB =
         (
@@ -1364,59 +1405,77 @@ let private cachedField (t:Type) (name:string) =
 
 // .NET has already this System.Linq.Expressions.Expressionvisitor
 // Too bad this was so simple and faster than what it would have taken to get to know that 700 rows of source code!
-/// Nodes already at their fixed point in one run, held by reference. A node a
-/// rule changed is visited again for the children the rule built, and this set
-/// keeps that revisit from walking the children that were reduced already.
-let private settledComparer =
-    { new IEqualityComparer<Expression> with
-        member _.Equals(a, b) = obj.ReferenceEquals(a, b)
-        member _.GetHashCode e = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode e }
-
+/// The last node of a memo chain: a node at its fixed point, or a rewrite that
+/// has no entry yet. Every rewrite is reduced right after its entry is written,
+/// so one without an entry is being reduced further up the stack: a rule built
+/// a node around the very node it rewrote.
 [<TailCall>]
-let rec internal visitWith (settled: HashSet<Expression>) (exp:Expression): Expression =
+let rec private chainEnd (memo: Dictionary<Expression, Expression>) (exp:Expression) =
+    let known, next = memo.TryGetValue exp
+    if known && not (obj.ReferenceEquals(next, exp)) then chainEnd memo next else exp
+
+/// A rewritten node's chain followed to its end and written back to the node,
+/// so the next lookup takes one step. A chain into a reduction still running
+/// ends at that rewrite as it stands, instead of reducing it again in a loop.
+let private followChain (memo: Dictionary<Expression, Expression>) (exp:Expression) (next:Expression) =
+    let last = chainEnd memo next
+    memo.[exp] <- last
+    last
+
+/// The memo of one run, keyed by reference: a node at its fixed point maps to
+/// itself and a node a rule rewrote to that rewrite. A node a rule changed is
+/// visited again for the children the rule built, and a subtree shared by
+/// several parents (the same instance at many places) is reduced once, so
+/// neither walks the reduced nodes again.
+[<TailCall>]
+let rec internal visitWith (memo: Dictionary<Expression, Expression>) (exp:Expression): Expression =
     //bottom up:
     if isNull exp then null else
-    if settled.Contains exp then exp else
-    let visited = visitchilds settled exp
+    let known, next = memo.TryGetValue exp
+    if known then
+        if obj.ReferenceEquals(next, exp) then exp else followChain memo exp next
+    else
+    let visited = visitchilds memo exp
     let reduced = doReduction visited
     // A rule can build children of its own (gather turns (p and q) or (p and q)
     // into p and (q or q)), and those have not been reduced yet: a node a rule
     // changed is visited again, bottom-up, so one pass reaches the fixed point
     // a second pass would otherwise find. Every rule returns its input instance
     // when it has nothing to do, which is what ends the recursion.
+    // The memo is written before the revisit, so that call stays a tail call.
+    memo.[exp] <- reduced
     if obj.ReferenceEquals(reduced, visited) then
-        settled.Add reduced |> ignore
+        if not (obj.ReferenceEquals(reduced, exp)) then memo.[reduced] <- reduced
         reduced
-    else visitWith settled reduced
-    
-and internal visitchilds (settled: HashSet<Expression>) (e:Expression): Expression =
+    else visitWith memo reduced
+
+and internal visitchilds (memo: Dictionary<Expression, Expression>) (e:Expression): Expression =
 
     //printfn "%i" (System.Diagnostics.StackTrace().FrameCount)
     if isNull e then null else
     match e.NodeType, e with
     | ExpressionType.Constant, (:? ConstantExpression as e)    -> 
-       let v = ``WhereSelectEnumerableIterator visitor`` settled e
+       let v = ``WhereSelectEnumerableIterator visitor`` memo e
        upcast v
     | ExpressionType.Parameter, (:? ParameterExpression as e)   -> upcast e
     | ExpressionType.MemberAccess, (:? MemberExpression as e)      -> 
-        let v = visitWith settled e.Expression
+        let v = visitWith memo e.Expression
         if v=e.Expression then upcast e else upcast Expression.MakeMemberAccess(v, e.Member)
     | ExpressionType.Call, (:? MethodCallExpression as e)  -> 
-        let obje = visitWith settled e.Object
+        let obje = visitWith memo e.Object
         let args = e.Arguments |> Seq.toArray 
-        let visited = args |> Array.map (visitWith settled)
+        let visited = args |> Array.map (visitWith memo)
         if e.Object = obje && args = visited then upcast e else
         upcast Expression.Call(obje, e.Method, visited)
     | ExpressionType.Lambda, (:? LambdaExpression as e)      -> 
-        let b = visitWith settled e.Body 
-        if b=e.Body then upcast e 
-        else 
-        upcast Expression.Lambda(e.Type, visitWith settled b, e.Parameters) // intentional revisit
+        let b = visitWith memo e.Body 
+        if b=e.Body then upcast e
+        else upcast Expression.Lambda(e.Type, b, e.Parameters)
     | ExpressionType.TypeIs, (:? TypeBinaryExpression as e)  -> 
-        let v = visitWith settled e.Expression
+        let v = visitWith memo e.Expression
         if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
     | ExpressionType.Conditional, (:? ConditionalExpression as e) -> 
-        let v1, v2, v3 = visitWith settled e.Test, visitWith settled e.IfTrue, visitWith settled e.IfFalse
+        let v1, v2, v3 = visitWith memo e.Test, visitWith memo e.IfTrue, visitWith memo e.IfFalse
         if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
     | ExpressionType.New, (:? NewExpression as e) ->
         if isNull e.Constructor then
@@ -1432,55 +1491,58 @@ and internal visitchilds (settled: HashSet<Expression>) (e:Expression): Expressi
             // Rebuild only when a child changed: an unconditional rebuild would break the
             // reference-equality short-circuits of every ancestor node.
             let args = e.Arguments |> Seq.toArray
-            let visited = args |> Array.map (visitWith settled)
+            let visited = args |> Array.map (visitWith memo)
             if args = visited then upcast e
             elif isNull e.Members then upcast Expression.New(e.Constructor, visited)
             else upcast Expression.New(e.Constructor, visited, e.Members)
     | ExpressionType.NewArrayBounds, (:? NewArrayExpression as e) ->
         let exprs = e.Expressions |> Seq.toArray
-        let visited = exprs |> Array.map (visitWith settled)
+        let visited = exprs |> Array.map (visitWith memo)
         if exprs = visited then upcast e else upcast Expression.NewArrayBounds(e.Type.GetElementType(), visited)
     | ExpressionType.NewArrayInit, (:? NewArrayExpression as e) ->
         let exprs = e.Expressions |> Seq.toArray
-        let visited = exprs |> Array.map (visitWith settled)
+        let visited = exprs |> Array.map (visitWith memo)
         if exprs = visited then upcast e else upcast Expression.NewArrayInit(e.Type.GetElementType(), visited)
     | ExpressionType.Invoke, (:? InvocationExpression as e)  ->
-        let expr = visitWith settled e.Expression
+        let expr = visitWith memo e.Expression
         let args = e.Arguments |> Seq.toArray
-        let visited = args |> Array.map (visitWith settled)
+        let visited = args |> Array.map (visitWith memo)
         if expr = e.Expression && args = visited then upcast e else upcast Expression.Invoke(expr, visited)
     | ExpressionType.MemberInit, (:? MemberInitExpression as e)  ->
-        let v = visitWith settled e.NewExpression
+        let v = visitWith memo e.NewExpression
         if v = (e.NewExpression :> Expression) then upcast e
-        else upcast Expression.MemberInit( v :?> NewExpression , e.Bindings) //probably shoud visitWith settled also bindings
+        else upcast Expression.MemberInit( v :?> NewExpression , e.Bindings) //probably shoud visit also bindings
     | ExpressionType.ListInit, (:? ListInitExpression as e)    ->
-        let v = visitWith settled e.NewExpression
+        let v = visitWith memo e.NewExpression
         if v = (e.NewExpression :> Expression) then upcast e
-        else upcast Expression.ListInit( v :?> NewExpression, e.Initializers) //probably shoud visitWith settled also initialixers
+        else upcast Expression.ListInit( v :?> NewExpression, e.Initializers) //probably shoud visit also initialixers
     | _, (:? UnaryExpression as e) -> 
-        let visitedOperand = visitWith settled e.Operand
+        let visitedOperand = visitWith memo e.Operand
         if visitedOperand=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visitedOperand,e.Type,e.Method) 
     | ExpressionType.Coalesce, (:? BinaryExpression as e) when  not (isNull e.Conversion) -> 
-            let v1, v2, v3 = visitWith settled e.Left, visitWith settled e.Right, visitWith settled e.Conversion
+            let v1, v2, v3 = visitWith memo e.Left, visitWith memo e.Right, visitWith memo e.Conversion
             if v1=e.Left && v2=e.Right && v3=(e.Conversion:>Expression) then upcast e else upcast Expression.Coalesce(v1, v2, v3 :?> LambdaExpression)
     | nt, (:? BinaryExpression as e)      -> 
-            let v1, v2 = visitWith settled e.Left, visitWith settled e.Right
+            let v1, v2 = visitWith memo e.Left, visitWith memo e.Right
             if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(nt,v1,v2,e.IsLiftedToNull, e.Method)
-    | ExpressionType.Block, (:? BlockExpression as e) ->
-            let vars = e.Variables |> Seq.toArray
-            let transformedVariables =
-                try vars |> Array.map(fun e -> visitWith settled e :?> ParameterExpression)
-                with | _ -> vars
-            let exprs = e.Expressions |> Seq.toArray
-            let visited = exprs |> Array.map (visitWith settled)
-            if vars = transformedVariables && exprs = visited then upcast e
-            else upcast Expression.Block(transformedVariables, visited)
+    | ExpressionType.Block, (:? BlockExpression as e) -> visitBlock memo e
     | nt, _ -> if (int nt = 52) then e // Expression.Extension
                else failwith ("encountered unknown LINQ expression: " + e.NodeType.ToString() + " " + e.ToString())
 
+/// Out of visitchilds: its try/with would grow the frame of every nesting level.
+and private visitBlock (memo: Dictionary<Expression, Expression>) (e:BlockExpression): Expression =
+    let vars = e.Variables |> Seq.toArray
+    let transformedVariables =
+        try vars |> Array.map(fun e -> visitWith memo e :?> ParameterExpression)
+        with | _ -> vars
+    let exprs = e.Expressions |> Seq.toArray
+    let visited = exprs |> Array.map (visitWith memo)
+    if vars = transformedVariables && exprs = visited then upcast e
+    else upcast Expression.Block(transformedVariables, visited)
+
 // Look also inside a LINQ-wrapper
 // https://referencesource.microsoft.com/#System.Core/System/Linq/Enumerable.cs,8bf16962931637d3,references
-and internal ``WhereSelectEnumerableIterator visitor`` (settled: HashSet<Expression>) (ce:ConstantExpression) : ConstantExpression =
+and internal ``WhereSelectEnumerableIterator visitor`` (memo: Dictionary<Expression, Expression>) (ce:ConstantExpression) : ConstantExpression =
     if isNull ce.Value || isNull ce.Type || (not (ce.Type.FullName.StartsWith "System.Linq")) then ce
     else
     let enuProp = cachedProperty ce.Type "Enumerable"
@@ -1500,14 +1562,14 @@ and internal ``WhereSelectEnumerableIterator visitor`` (settled: HashSet<Express
     if isNull expr then ce
     else
     let exp = expr :?> Expression
-    let opt = visitWith settled exp
+    let opt = visitWith memo exp
     if opt <> exp then
         exprItm.SetValue(src, (box opt))
     ce
 
-/// One optimizer run over a tree, with its own record of settled nodes.
+/// One optimizer run over a tree, with its own memo of reduced nodes.
 let internal visit' (exp:Expression): Expression =
-    visitWith (HashSet<Expression>(settledComparer)) exp
+    visitWith (Dictionary<Expression, Expression>(HashIdentity.Reference)) exp
 
 /// Expression tree visitor: go through the whole expression tree.
 let visit exp =

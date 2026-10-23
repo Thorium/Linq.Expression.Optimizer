@@ -1179,6 +1179,63 @@ type MoreInternalTests (output : ITestOutputHelper) =
         (ExpressionOptimizer.visit e).ToString() |> should equal "(d.Date.Day == 5)"
 
     [<Xunit.Fact>]
+    member _.``A nested duplicate condition keeps the other operands`` () =
+        let x = Expression.Parameter(typeof<int>, "x")
+        let b = Expression.Parameter(typeof<bool>, "b")
+        let gt0 () = Expression.GreaterThan(x, Expression.Constant 0) :> Expression
+        // deMorgan turns this into !((x > 0) || ((x > 0) || b)); b must survive
+        let e = Expression.AndAlso(Expression.Not(gt0()), Expression.Not(Expression.OrElse(gt0(), b)))
+        let opt = ExpressionOptimizer.visit e
+        let f = Expression.Lambda<Func<int, bool, bool>>(e, x, b).Compile()
+        let g = Expression.Lambda<Func<int, bool, bool>>(opt, x, b).Compile()
+        for xv in [ -1; 0; 1 ] do
+            for bv in [ false; true ] do
+                g.Invoke(xv, bv) |> should equal (f.Invoke(xv, bv))
+        let opt2 = ExpressionOptimizer.visit (Expression.AndAlso(gt0(), Expression.AndAlso(b, gt0())))
+        opt2.ToString() |> should equal "((x > 0) AndAlso b)"
+
+    [<Xunit.Fact>]
+    member _.``A duplicate guard keeps the first one`` () =
+        let s = Expression.Parameter(typeof<string>, "s")
+        let notNull () = Expression.NotEqual(s, Expression.Constant(null, typeof<string>)) :> Expression
+        let len = Expression.GreaterThan(Expression.Property(s, "Length"), Expression.Constant 0)
+        // s != null && (s.Length > 0 && s != null): the guard that stays is the outer one
+        let e = Expression.AndAlso(notNull(), Expression.AndAlso(len, notNull()))
+        let opt = ExpressionOptimizer.visit e
+        let g = Expression.Lambda<Func<string, bool>>(opt, s).Compile()
+        g.Invoke null |> should equal false
+        g.Invoke "" |> should equal false
+        g.Invoke "a" |> should equal true
+
+    [<Xunit.Fact>]
+    member _.``A duplicate under a non-short-circuit And keeps its guard`` () =
+        let s = Expression.Parameter(typeof<string>, "s")
+        let notNull () = Expression.NotEqual(s, Expression.Constant(null, typeof<string>)) :> Expression
+        let len = Expression.GreaterThan(Expression.Property(s, "Length"), Expression.Constant 0)
+        // s != null & (s != null && s.Length > 0): & runs its right side even when s is null.
+        // The rule alone: a later rule turning & into && must not be what keeps the guard.
+        let e = Expression.And(notNull(), Expression.AndAlso(notNull(), len))
+        let opt = ExpressionOptimizer.Methods.``remove duplicate condition`` e
+        let g = Expression.Lambda<Func<string, bool>>(opt, s).Compile()
+        g.Invoke null |> should equal false
+        g.Invoke "" |> should equal false
+        g.Invoke "a" |> should equal true
+
+    [<Xunit.Fact>]
+    member _.``A shared subtree is reduced once`` () =
+        // 1 + 1 folds to a new constant each time it is reduced: one constant at both
+        // places means one reduction. (Reducing it per path is exponential in the
+        // depth of a graph that shares subtrees at every level.)
+        let x = Expression.Parameter(typeof<int>, "x")
+        let y = Expression.Parameter(typeof<int>, "y")
+        let shared = Expression.Add(Expression.Constant 1, Expression.Constant 1)
+        let e = Expression.Add(Expression.Multiply(x, shared), Expression.Multiply(y, shared))
+        let opt = ExpressionOptimizer.visit e :?> BinaryExpression
+        opt.ToString() |> should equal "((x * 2) + (y * 2))"
+        let right (e: Expression) = (e :?> BinaryExpression).Right
+        obj.ReferenceEquals(right opt.Left, right opt.Right) |> should equal true
+
+    [<Xunit.Fact>]
     member _.``CSharp-style anonymous type member access is reduced`` () =
         let s = Expression.Parameter(typeof<string>, "s")
         let ctor = typeof<AnonymousObjectTest>.GetConstructor [| typeof<string> |]
