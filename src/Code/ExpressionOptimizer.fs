@@ -6,6 +6,7 @@ module ExpressionOptimizer
 
 open System.Linq.Expressions
 open System
+open System.Collections.Generic
 open System.Reflection
 
 
@@ -993,39 +994,46 @@ module Methods =
                         | _ -> e
                      with :? OverflowException -> e)
                 | ExpressionType.Divide ->
-                    // Never fold division by a zero constant: the runtime exception must be preserved.
-                    // (Floats are fine: they fold to Infinity/NaN, matching runtime behavior.)
-                    match le.Value, ri.Value with
-                    | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (le.Type, typeof<decimal>) && rstr <> 0m -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (le.Type, typeof<float32>) -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? double  as lstr), (:? double  as rstr) when Type.(=) (le.Type, typeof<double>)  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? float   as lstr), (:? float   as rstr) when Type.(=) (le.Type, typeof<float>)   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? Int32   as lstr), (:? Int32   as rstr) when Type.(=) (le.Type, typeof<Int32>) && rstr <> 0   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? Int64   as lstr), (:? Int64   as rstr) when Type.(=) (le.Type, typeof<Int64>) && rstr <> 0L   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when Type.(=) (le.Type, typeof<UInt32>) && rstr <> 0u  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when Type.(=) (le.Type, typeof<UInt64>) && rstr <> 0UL  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? Int16   as lstr), (:? Int16   as rstr) when Type.(=) (le.Type, typeof<Int16>) && rstr <> 0s   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (le.Type, typeof<UInt16>) && rstr <> 0us  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>) && rstr <> 0y    -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>) && rstr <> 0uy   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (le.Type, typeof<bigint>) && rstr <> 0I   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
-                    | _ -> e
+                    // Nor MinValue / -1 for the signed integers: that overflows at runtime, so the
+                    // fold itself would throw here instead of the runtime throwing there.
+                    (try
+                        // Never fold division by a zero constant: the runtime exception must be preserved.
+                        // (Floats are fine: they fold to Infinity/NaN, matching runtime behavior.)
+                        match le.Value, ri.Value with
+                        | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (le.Type, typeof<decimal>) && rstr <> 0m -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (le.Type, typeof<float32>) -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? double  as lstr), (:? double  as rstr) when Type.(=) (le.Type, typeof<double>)  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? float   as lstr), (:? float   as rstr) when Type.(=) (le.Type, typeof<float>)   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? Int32   as lstr), (:? Int32   as rstr) when Type.(=) (le.Type, typeof<Int32>) && rstr <> 0   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? Int64   as lstr), (:? Int64   as rstr) when Type.(=) (le.Type, typeof<Int64>) && rstr <> 0L   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? UInt32  as lstr), (:? UInt32  as rstr) when Type.(=) (le.Type, typeof<UInt32>) && rstr <> 0u  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? UInt64  as lstr), (:? UInt64  as rstr) when Type.(=) (le.Type, typeof<UInt64>) && rstr <> 0UL  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? Int16   as lstr), (:? Int16   as rstr) when Type.(=) (le.Type, typeof<Int16>) && rstr <> 0s   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (le.Type, typeof<UInt16>) && rstr <> 0us  -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>) && rstr <> 0y    -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>) && rstr <> 0uy   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (le.Type, typeof<bigint>) && rstr <> 0I   -> Expression.Constant(lstr / rstr, le.Type) :> Expression 
+                        | _ -> e
+                     with :? OverflowException -> e)
                 | ExpressionType.Modulo -> 
-                    match le.Value, ri.Value with
-                    | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (le.Type, typeof<decimal>) && rstr <> 0m -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (le.Type, typeof<float32>) -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? double  as lstr), (:? double  as rstr) when Type.(=) (le.Type, typeof<double>)  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? float   as lstr), (:? float   as rstr) when Type.(=) (le.Type, typeof<float>)   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? Int32   as lstr), (:? Int32   as rstr) when Type.(=) (le.Type, typeof<Int32>) && rstr <> 0   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? Int64   as lstr), (:? Int64   as rstr) when Type.(=) (le.Type, typeof<Int64>) && rstr <> 0L   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when Type.(=) (le.Type, typeof<UInt32>) && rstr <> 0u  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when Type.(=) (le.Type, typeof<UInt64>) && rstr <> 0UL  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? Int16   as lstr), (:? Int16   as rstr) when Type.(=) (le.Type, typeof<Int16>) && rstr <> 0s   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (le.Type, typeof<UInt16>) && rstr <> 0us  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>) && rstr <> 0y    -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>) && rstr <> 0uy   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (le.Type, typeof<bigint>) && rstr <> 0I   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
-                    | _ -> e
+                    // Never fold a signed MinValue % -1 either: it overflows at runtime.
+                    (try
+                        match le.Value, ri.Value with
+                        | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (le.Type, typeof<decimal>) && rstr <> 0m -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (le.Type, typeof<float32>) -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? double  as lstr), (:? double  as rstr) when Type.(=) (le.Type, typeof<double>)  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? float   as lstr), (:? float   as rstr) when Type.(=) (le.Type, typeof<float>)   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? Int32   as lstr), (:? Int32   as rstr) when Type.(=) (le.Type, typeof<Int32>) && rstr <> 0   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? Int64   as lstr), (:? Int64   as rstr) when Type.(=) (le.Type, typeof<Int64>) && rstr <> 0L   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? UInt32  as lstr), (:? UInt32  as rstr) when Type.(=) (le.Type, typeof<UInt32>) && rstr <> 0u  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? UInt64  as lstr), (:? UInt64  as rstr) when Type.(=) (le.Type, typeof<UInt64>) && rstr <> 0UL  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? Int16   as lstr), (:? Int16   as rstr) when Type.(=) (le.Type, typeof<Int16>) && rstr <> 0s   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (le.Type, typeof<UInt16>) && rstr <> 0us  -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (le.Type, typeof<int8>) && rstr <> 0y    -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (le.Type, typeof<uint8>) && rstr <> 0uy   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (le.Type, typeof<bigint>) && rstr <> 0I   -> Expression.Constant(lstr % rstr, le.Type) :> Expression 
+                        | _ -> e
+                     with :? OverflowException -> e)
                 | _ -> e
             | ExpressionType.Add, ExpressionType.Constant, (:? BinaryExpression as inner), (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Add ->
                 match inner.Left.NodeType, inner.Right.NodeType, inner.Left, inner.Right with
@@ -1232,14 +1240,25 @@ module Methods =
             | _ -> e
         | _ -> e
 
+    /// A string expression that cannot evaluate to null: a non-null constant, or a
+    /// concatenation (String.Concat turns null into "").
+    let private isNeverNullString (e:Expression) =
+        match e.NodeType, e with
+        | ExpressionType.Constant, (:? ConstantExpression as ce) -> not (isNull ce.Value)
+        | ExpressionType.Add, _ -> Type.(=)(e.Type, typeof<string>)
+        | ExpressionType.Call, (:? MethodCallExpression as mc) -> mc.Method.Name = "Concat" && Type.(=)(mc.Method.DeclaringType, typeof<string>)
+        | _ -> false
+
     /// String concatenation with empty string optimization
     /// "" + x -> x, x + "" -> x
+    /// Only when x cannot be null: null + "" is "" (String.Concat), while x alone
+    /// stays null, so `(x + "").Length` would go from 0 to a NullReferenceException.
     let ``simplify string operations`` (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.Add, (:? BinaryExpression as ce) when Type.(=)(ce.Type, typeof<string>) ->
             match ce.Left.NodeType, ce.Right.NodeType, ce.Left, ce.Right with
-            | ExpressionType.Constant, _, (:? ConstantExpression as le), _ when (le.Value :?> string) = "" -> ce.Right
-            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when (ri.Value :?> string) = "" -> ce.Left
+            | ExpressionType.Constant, _, (:? ConstantExpression as le), _ when (le.Value :?> string) = "" && isNeverNullString ce.Right -> ce.Right
+            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when (ri.Value :?> string) = "" && isNeverNullString ce.Left -> ce.Left
             | _ -> e
         | _ -> e
 
@@ -1345,40 +1364,59 @@ let private cachedField (t:Type) (name:string) =
 
 // .NET has already this System.Linq.Expressions.Expressionvisitor
 // Too bad this was so simple and faster than what it would have taken to get to know that 700 rows of source code!
+/// Nodes already at their fixed point in one run, held by reference. A node a
+/// rule changed is visited again for the children the rule built, and this set
+/// keeps that revisit from walking the children that were reduced already.
+let private settledComparer =
+    { new IEqualityComparer<Expression> with
+        member _.Equals(a, b) = obj.ReferenceEquals(a, b)
+        member _.GetHashCode e = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode e }
+
 [<TailCall>]
-let rec internal visit' (exp:Expression): Expression =
+let rec internal visitWith (settled: HashSet<Expression>) (exp:Expression): Expression =
     //bottom up:
     if isNull exp then null else
-    doReduction (visitchilds exp)
+    if settled.Contains exp then exp else
+    let visited = visitchilds settled exp
+    let reduced = doReduction visited
+    // A rule can build children of its own (gather turns (p and q) or (p and q)
+    // into p and (q or q)), and those have not been reduced yet: a node a rule
+    // changed is visited again, bottom-up, so one pass reaches the fixed point
+    // a second pass would otherwise find. Every rule returns its input instance
+    // when it has nothing to do, which is what ends the recursion.
+    if obj.ReferenceEquals(reduced, visited) then
+        settled.Add reduced |> ignore
+        reduced
+    else visitWith settled reduced
     
-and internal visitchilds (e:Expression): Expression =
+and internal visitchilds (settled: HashSet<Expression>) (e:Expression): Expression =
 
     //printfn "%i" (System.Diagnostics.StackTrace().FrameCount)
     if isNull e then null else
     match e.NodeType, e with
     | ExpressionType.Constant, (:? ConstantExpression as e)    -> 
-       let v = ``WhereSelectEnumerableIterator visitor`` e
+       let v = ``WhereSelectEnumerableIterator visitor`` settled e
        upcast v
     | ExpressionType.Parameter, (:? ParameterExpression as e)   -> upcast e
     | ExpressionType.MemberAccess, (:? MemberExpression as e)      -> 
-        let v = visit' e.Expression
+        let v = visitWith settled e.Expression
         if v=e.Expression then upcast e else upcast Expression.MakeMemberAccess(v, e.Member)
     | ExpressionType.Call, (:? MethodCallExpression as e)  -> 
-        let obje = visit' e.Object
+        let obje = visitWith settled e.Object
         let args = e.Arguments |> Seq.toArray 
-        let visited = args |> Array.map visit'
+        let visited = args |> Array.map (visitWith settled)
         if e.Object = obje && args = visited then upcast e else
         upcast Expression.Call(obje, e.Method, visited)
     | ExpressionType.Lambda, (:? LambdaExpression as e)      -> 
-        let b = visit' e.Body 
+        let b = visitWith settled e.Body 
         if b=e.Body then upcast e 
         else 
-        upcast Expression.Lambda(e.Type, visit' b, e.Parameters) // intentional revisit
+        upcast Expression.Lambda(e.Type, visitWith settled b, e.Parameters) // intentional revisit
     | ExpressionType.TypeIs, (:? TypeBinaryExpression as e)  -> 
-        let v = visit' e.Expression
+        let v = visitWith settled e.Expression
         if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
     | ExpressionType.Conditional, (:? ConditionalExpression as e) -> 
-        let v1, v2, v3 = visit' e.Test, visit' e.IfTrue, visit' e.IfFalse
+        let v1, v2, v3 = visitWith settled e.Test, visitWith settled e.IfTrue, visitWith settled e.IfFalse
         if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
     | ExpressionType.New, (:? NewExpression as e) ->
         if isNull e.Constructor then
@@ -1394,47 +1432,47 @@ and internal visitchilds (e:Expression): Expression =
             // Rebuild only when a child changed: an unconditional rebuild would break the
             // reference-equality short-circuits of every ancestor node.
             let args = e.Arguments |> Seq.toArray
-            let visited = args |> Array.map visit'
+            let visited = args |> Array.map (visitWith settled)
             if args = visited then upcast e
             elif isNull e.Members then upcast Expression.New(e.Constructor, visited)
             else upcast Expression.New(e.Constructor, visited, e.Members)
     | ExpressionType.NewArrayBounds, (:? NewArrayExpression as e) ->
         let exprs = e.Expressions |> Seq.toArray
-        let visited = exprs |> Array.map visit'
+        let visited = exprs |> Array.map (visitWith settled)
         if exprs = visited then upcast e else upcast Expression.NewArrayBounds(e.Type.GetElementType(), visited)
     | ExpressionType.NewArrayInit, (:? NewArrayExpression as e) ->
         let exprs = e.Expressions |> Seq.toArray
-        let visited = exprs |> Array.map visit'
+        let visited = exprs |> Array.map (visitWith settled)
         if exprs = visited then upcast e else upcast Expression.NewArrayInit(e.Type.GetElementType(), visited)
     | ExpressionType.Invoke, (:? InvocationExpression as e)  ->
-        let expr = visit' e.Expression
+        let expr = visitWith settled e.Expression
         let args = e.Arguments |> Seq.toArray
-        let visited = args |> Array.map visit'
+        let visited = args |> Array.map (visitWith settled)
         if expr = e.Expression && args = visited then upcast e else upcast Expression.Invoke(expr, visited)
     | ExpressionType.MemberInit, (:? MemberInitExpression as e)  ->
-        let v = visit' e.NewExpression
+        let v = visitWith settled e.NewExpression
         if v = (e.NewExpression :> Expression) then upcast e
-        else upcast Expression.MemberInit( v :?> NewExpression , e.Bindings) //probably shoud visit' also bindings
+        else upcast Expression.MemberInit( v :?> NewExpression , e.Bindings) //probably shoud visitWith settled also bindings
     | ExpressionType.ListInit, (:? ListInitExpression as e)    ->
-        let v = visit' e.NewExpression
+        let v = visitWith settled e.NewExpression
         if v = (e.NewExpression :> Expression) then upcast e
-        else upcast Expression.ListInit( v :?> NewExpression, e.Initializers) //probably shoud visit' also initialixers
+        else upcast Expression.ListInit( v :?> NewExpression, e.Initializers) //probably shoud visitWith settled also initialixers
     | _, (:? UnaryExpression as e) -> 
-        let visit'ed = visit' e.Operand
-        if visit'ed=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visit'ed,e.Type,e.Method) 
+        let visitedOperand = visitWith settled e.Operand
+        if visitedOperand=e.Operand then upcast e else upcast Expression.MakeUnary(e.NodeType,visitedOperand,e.Type,e.Method) 
     | ExpressionType.Coalesce, (:? BinaryExpression as e) when  not (isNull e.Conversion) -> 
-            let v1, v2, v3 = visit' e.Left, visit' e.Right, visit' e.Conversion
+            let v1, v2, v3 = visitWith settled e.Left, visitWith settled e.Right, visitWith settled e.Conversion
             if v1=e.Left && v2=e.Right && v3=(e.Conversion:>Expression) then upcast e else upcast Expression.Coalesce(v1, v2, v3 :?> LambdaExpression)
     | nt, (:? BinaryExpression as e)      -> 
-            let v1, v2 = visit' e.Left, visit' e.Right
+            let v1, v2 = visitWith settled e.Left, visitWith settled e.Right
             if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(nt,v1,v2,e.IsLiftedToNull, e.Method)
     | ExpressionType.Block, (:? BlockExpression as e) ->
             let vars = e.Variables |> Seq.toArray
             let transformedVariables =
-                try vars |> Array.map(fun e -> visit' e :?> ParameterExpression)
+                try vars |> Array.map(fun e -> visitWith settled e :?> ParameterExpression)
                 with | _ -> vars
             let exprs = e.Expressions |> Seq.toArray
-            let visited = exprs |> Array.map visit'
+            let visited = exprs |> Array.map (visitWith settled)
             if vars = transformedVariables && exprs = visited then upcast e
             else upcast Expression.Block(transformedVariables, visited)
     | nt, _ -> if (int nt = 52) then e // Expression.Extension
@@ -1442,7 +1480,7 @@ and internal visitchilds (e:Expression): Expression =
 
 // Look also inside a LINQ-wrapper
 // https://referencesource.microsoft.com/#System.Core/System/Linq/Enumerable.cs,8bf16962931637d3,references
-and internal ``WhereSelectEnumerableIterator visitor`` (ce:ConstantExpression) : ConstantExpression =
+and internal ``WhereSelectEnumerableIterator visitor`` (settled: HashSet<Expression>) (ce:ConstantExpression) : ConstantExpression =
     if isNull ce.Value || isNull ce.Type || (not (ce.Type.FullName.StartsWith "System.Linq")) then ce
     else
     let enuProp = cachedProperty ce.Type "Enumerable"
@@ -1462,10 +1500,14 @@ and internal ``WhereSelectEnumerableIterator visitor`` (ce:ConstantExpression) :
     if isNull expr then ce
     else
     let exp = expr :?> Expression
-    let opt = visit' exp
+    let opt = visitWith settled exp
     if opt <> exp then
         exprItm.SetValue(src, (box opt))
     ce
+
+/// One optimizer run over a tree, with its own record of settled nodes.
+let internal visit' (exp:Expression): Expression =
+    visitWith (HashSet<Expression>(settledComparer)) exp
 
 /// Expression tree visitor: go through the whole expression tree.
 let visit exp =
