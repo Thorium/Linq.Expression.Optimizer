@@ -17,7 +17,7 @@
     <RepositoryUrl>https://github.com/thorium/Linq.Expression.Optimizer/</RepositoryUrl>
     <PackageProjectUrl>https://thorium.github.io/Linq.Expression.Optimizer/</PackageProjectUrl>
     <PackageIconUrl>https://thorium.github.io/Linq.Expression.Optimizer/img/logo.png</PackageIconUrl>
-    <PackageTags>LINQ Expression Expressions Expression tree expressiontree expression-tree IQueryable System.Linq.Expressions optimise optimize compile boolean algebra deMorgan reduction optimizer optimiser tree</PackageTags>
+    <PackageTags>LINQ Expression Expressions Expression tree expressiontree expression-tree IQueryable System.Linq.Expressions optimise optimize compile boolean algebra deMorgan reduction optimizer optimiser tree EntityFramework LinqProvider ORM query-optimization</PackageTags>
     <SignAssembly>True</SignAssembly>
     <AssemblyOriginatorKeyFile>../Linq.Expression.Optimizer/Linq.Expression.Optimizer.snk</AssemblyOriginatorKeyFile>
     <DelaySign>False</DelaySign>

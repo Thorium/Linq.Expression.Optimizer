@@ -1,3 +1,6 @@
+### 1.0.40 - 20/09/2026
+* Property-based test suite over random expression trees
+
 ### 1.0.39 - 11/06/2026
 * Fixes for some edge cases found
 

@@ -10,12 +10,11 @@ open System.Linq.Expressions
 
 let xs = [1;2;3;4;5].AsQueryable()
 
-[<Literal>]
 let cons = 8
 let qry =
     query{
         for x in xs do
-        select (((not(x>3))) && cons>2)
+        select (not(not(not(x>3))) && true && cons>2)
     }
 
 let optimized = ExpressionOptimizer.visit qry.Expression

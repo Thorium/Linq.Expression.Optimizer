@@ -20,7 +20,7 @@
     <RepositoryUrl>https://github.com/Thorium/Linq.Expression.Optimizer/</RepositoryUrl>
     <PackageProjectUrl>https://github.com/Thorium/Linq.Expression.Optimizer</PackageProjectUrl>
     <PackageIcon>logo.png</PackageIcon>
-    <PackageTags>LINQ Expression Expressions Expression tree expressiontree expression-tree IQueryable System.Linq.Expressions optimise optimize compile boolean algebra deMorgan reduction optimizer optimiser tree</PackageTags>
+    <PackageTags>LINQ Expression Expressions Expression tree expressiontree expression-tree IQueryable System.Linq.Expressions optimise optimize compile boolean algebra deMorgan reduction optimizer optimiser tree EntityFramework LinqProvider ORM query-optimization</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0' Or '$(TargetFramework)' == 'net10.0' Or '$(TargetFramework)' == 'netstandard2.1'">

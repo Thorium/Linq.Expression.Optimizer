@@ -281,7 +281,9 @@ module Queries =
         let strings = arr |> List.map(fun x -> x.ToString())
         query{
             for s in strings.AsQueryable() do
-            where ((s + "") = ("" + s))
+            // `+ ""` is dropped only from an operand that cannot be null: a
+            // concatenation is one, a bare `s` is not (null + "" is "", s stays null).
+            where (((s + "!") + "") = ("" + (s + "!")))
         }
 
     let qry23 (arr:int list) =
@@ -546,8 +548,37 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
         let optStr = exp.ToString()
         output.WriteLine ("Original length: " + origStr.Length.ToString())
         output.WriteLine ("Optimized length: " + optStr.Length.ToString())
-        // Should optimize s + "" and "" + s to just s
+        // Should optimize (s + "!") + "" and "" + (s + "!") to just s + "!"
         should lessThan origStr.Length optStr.Length
+
+    [<Xunit.Fact>]
+    member test.``a nullable string plus an empty string is left alone``() =
+        // Found by the property suite: (s + "").Length is 0 for a null s, s.Length throws.
+        let s = Expression.Parameter(typeof<string>, "s")
+        let concat = typeof<string>.GetMethod("Concat", [| typeof<string>; typeof<string> |])
+        let plusEmpty = Expression.Add(s, Expression.Constant(""), concat)
+        let length = Expression.Property(plusEmpty, "Length")
+        (ExpressionOptimizer.visit length).ToString() |> should equal (length.ToString())
+        // while a concatenation, which is never null, does lose its empty tail
+        let tail = Expression.Add(Expression.Add(s, Expression.Constant("!"), concat), Expression.Constant(""), concat)
+        (ExpressionOptimizer.visit tail).ToString() |> should equal "(s + \"!\")"
+
+    [<Xunit.Fact>]
+    member test.``a constant MinValue divided by minus one is left for the runtime``() =
+        // Found by the property suite: folding it threw an OverflowException out of visit.
+        let e = Expression.Divide(Expression.Constant(Int32.MinValue), Expression.Constant(-1))
+        (ExpressionOptimizer.visit e).ToString() |> should equal (e.ToString())
+        let m = Expression.Modulo(Expression.Constant(Int32.MinValue), Expression.Constant(-1))
+        (ExpressionOptimizer.visit m).ToString() |> should equal (m.ToString())
+
+    [<Xunit.Fact>]
+    member test.``children a rule builds are reduced in the same pass``() =
+        // Found by the property suite: (p && q) || (p && q) gathered into p && (q || q),
+        // and the q || q a second visit would have folded was left standing.
+        let p = Expression.Parameter(typeof<bool>, "p")
+        let q = Expression.Parameter(typeof<bool>, "q")
+        let e = Expression.OrElse(Expression.AndAlso(p, q), Expression.AndAlso(p, q))
+        (ExpressionOptimizer.visit e).ToString() |> should equal "(p AndAlso q)"
 
     [<Xunit.Fact>]
     member test.``qry23 conditionals optimized``() = 

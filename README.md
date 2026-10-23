@@ -46,6 +46,18 @@ Read the [Getting started tutorial](http://thorium.github.io/Linq.Expression.Opt
 
 Documentation: http://thorium.github.io/Linq.Expression.Optimizer
 
+## Tests
+
+`tests/Linq.Expression.Optimizer.Tests` is the example-based suite over LINQ queries.
+`tests/Linq.Expression.Optimizer.PropertyTests` is an FsCheck suite over random expression
+trees (booleans, integers, doubles with NaN, nullable integers and strings over ten
+parameters, in the shapes every reduction rule is written for): the optimized tree
+compiles to the same function as the original on a grid of inputs, optimizing never throws,
+optimizing twice is optimizing once, the tree never grows, and every reduction rule fires
+on some generated tree. An exception the original would throw (`x / 0`, `null.Length`) may
+disappear when the subtree that threw it is optimized away - the library is for
+side-effect-free expressions - but a value never changes and no new exception appears.
+
 ## Maintainer(s)
 
 - [@thorium](https://github.com/thorium)

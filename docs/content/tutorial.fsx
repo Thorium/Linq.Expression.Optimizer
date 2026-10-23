@@ -20,7 +20,6 @@ open System.Linq
 
 // e.g. Database IQueryable:
 let xs = [1;2;3;4;5;6].AsQueryable()
-[<Literal>]
 let v = true
 
 // Let's take some random horrible example:
@@ -28,10 +27,10 @@ let qry =
     query{
         for x in xs do
         let y = x+1
-        where ((x>1 && (((x<2) && (v=false)) || (y>3) && (x<2))) 
-              || (((x < 2)) && ((v && not v) || (v)) || (v && (4>y))))
-        select ((((x<2) && (v=false)) || (y>3) && (x<2)) 
-                && ((not(x>3))) || ((x < 2)))
+        where ((x>1 && (((x<2) && (x<2) && (v=false)) || (y>3) && (x<2))) 
+              || (not(not(x < 2)) && ((v && not(v)) || (v)) || (v && (4>y))))
+        select ((((x<2) && (x<2) && (v=false)) || (y>3) && (x<2)) 
+                && (not(not(not(x>3))) && true) || (not(not(x < 2))))
     }
 
 (**
