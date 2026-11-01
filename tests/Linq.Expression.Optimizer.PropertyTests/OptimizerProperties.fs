@@ -119,3 +119,21 @@ let ``every reduction rule fires on some generated tree`` () =
         Assert.True(List.isEmpty silent, "rules at positions " + String.Join(", ", silent) + " of reductionMethods never fired")
     finally
         ExpressionOptimizer.reductionMethods <- all
+
+/// A rule whose rewrite holds the node it rewrote (x -> x + 0) still ends:
+/// revisiting the rewrite meets that node again, and the visitor takes the
+/// rewrite as it stands instead of reducing it in a loop. (reductionMethods
+/// is put back as in the coverage test above.)
+[<Fact>]
+let ``a rule that wraps its input ends`` () =
+    let all = ExpressionOptimizer.reductionMethods
+    let wrap (e: Expression) =
+        match e with
+        | :? ParameterExpression as p when Type.(=)(p.Type, typeof<int>) -> Expression.Add(p, Expression.Constant 0) :> Expression
+        | _ -> e
+    try
+        ExpressionOptimizer.reductionMethods <- [ wrap ]
+        let optimized = ExpressionOptimizer.visit (Expression.Multiply(px, Expression.Constant 3))
+        Assert.Equal("(((x + 0) + 0) * 3)", optimized.ToString())
+    finally
+        ExpressionOptimizer.reductionMethods <- all
