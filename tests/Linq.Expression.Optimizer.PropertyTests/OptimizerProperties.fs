@@ -98,7 +98,7 @@ let ``tryVisit is visit when visit succeeds`` () =
 [<Fact>]
 let ``every reduction rule fires on some generated tree`` () =
     let all = ExpressionOptimizer.reductionMethods
-    let samples = Gen.sampleWithSize 60 400 genTree |> Array.map build
+    let samples = Gen.sampleWithSize 60 1000 genTree |> Array.map build
     // ``remove AnonymousType`` wants a C# compiler anonymous type
     // (<>f__AnonymousType...), which F# cannot spell; the example suite covers it.
     let excused = [ 6 ]

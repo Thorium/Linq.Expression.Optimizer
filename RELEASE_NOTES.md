@@ -1,3 +1,17 @@
+### 1.0.41 - 10/11/2026
+* Visited expressions are cached per run: a shared or rewritten subtree is reduced once
+* A constant MinValue / -1 and an empty-string concatenation of a nullable string are left alone
+* A tree nested deeper than the stack is optimized down to that depth instead of overflowing it
+* Parameters match by reference, not by name and type
+* Boolean rewrites keep the evaluation order: no operand is read ahead of its guard
+* Anonymous type members map to constructor arguments through NewExpression.Members
+* Tuples are recognised by type (System.Tuple, System.ValueTuple, AnonymousObject), not by a name starting with Tuple
+* x - x and c ? y : y compare their operands structurally, not by ToString
+* Range rewrites skip NaN constants and nullable operands; string ranges are ordinal and keep the comparison's method
+* Constants are regrouped for integral types only; float and nullable identities are applied only where exact; a decimal result is the same by value and may carry another scale
+* Nodes with a user-defined Method are not folded, and objects are not compared by value
+* No exception on string + object concatenation, a constant query over a list on .NET Framework, Nullable<bool> constants, typed conditionals, blocks without variables, node types without a rule, or a constant member or fold that throws
+
 ### 1.0.40 - 20/09/2026
 * Property-based test suite over random expression trees
 

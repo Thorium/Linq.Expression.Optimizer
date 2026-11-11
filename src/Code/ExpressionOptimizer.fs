@@ -4,6 +4,11 @@
 module ExpressionOptimizer
 #endif
 
+#if DEBUG
+// the stack probe of a debug build (hasStackBelow) allocates on the stack
+#nowarn "9"
+#endif
+
 open System.Linq.Expressions
 open System
 open System.Collections.Generic
@@ -15,23 +20,116 @@ open System.Linq.Expressions
 
 module Methods =
 
+    let internal isNullableType (t:Type) =
+        t.IsGenericType && Type.(=)(t.GetGenericTypeDefinition(), typedefof<Nullable<_>>)
+
+    /// The types whose own operators mean what the rules assume of an operator.
+    let private builtInOperatorTypes =
+        HashSet<Type>([ typeof<string>; typeof<decimal>; typeof<DateTime>; typeof<DateTimeOffset>; typeof<TimeSpan>; typeof<Guid>; typeof<bigint> ])
+
+    /// A type the F# operators compare as a total order with reflexive equality:
+    /// a primitive, an enum or one of builtInOperatorTypes, or a Nullable, option,
+    /// list or tuple of those. A float is one only at the top (the rules guard NaN
+    /// themselves there): inside a container it makes [nan] = [nan] false.
+    let rec private isOrderedType (floatAllowed:bool) (t:Type) =
+        if t.IsPrimitive then floatAllowed || not (Type.(=)(t, typeof<float>) || Type.(=)(t, typeof<float32>))
+        elif t.IsEnum || builtInOperatorTypes.Contains t then true
+        elif t.IsGenericType then
+            let d = t.GetGenericTypeDefinition()
+            if Type.(=)(d, typedefof<Nullable<_>>) then isOrderedType floatAllowed (t.GetGenericArguments().[0])
+            elif Type.(=)(d, typedefof<list<_>>) || Type.(=)(d, typedefof<option<_>>) || Type.(=)(d, typedefof<voption<_>>)
+                 || d.FullName.StartsWith("System.Tuple`", StringComparison.Ordinal)
+                 || d.FullName.StartsWith("System.ValueTuple`", StringComparison.Ordinal) then
+                t.GetGenericArguments() |> Array.forall (isOrderedType false)
+            else false
+        else false
+
+    /// The operator methods F# quotations put on a node: the generic comparisons
+    /// (Operators.op_Equality, ...) and arithmetic (LanguagePrimitives.AdditionDynamic, ...).
+    let private isFSharpOperator (m:MethodInfo) =
+        let t = m.DeclaringType
+        not (isNull t) &&
+        ((t.FullName = "Microsoft.FSharp.Core.Operators" && m.Name.StartsWith("op_", StringComparison.Ordinal)) ||
+         (t.FullName = "Microsoft.FSharp.Core.LanguagePrimitives" && m.Name.EndsWith("Dynamic", StringComparison.Ordinal)))
+
+    /// A node's operator is the built-in one when
+    ///  - the node has no Method: the operator of a primitive or an enum, or the
+    ///    reference comparison of two objects;
+    ///  - its Method is an op_* operator (for strings also the static Concat and
+    ///    Equals) declared by one of builtInOperatorTypes;
+    ///  - its Method is an F# operator (isFSharpOperator) over operands of an
+    ///    isOrderedType type.
+    /// A node with any other Method is user-defined and no rule folds or rewrites it.
+    let internal isBuiltInOperator (m:MethodInfo) (operandType:Type) =
+        isNull m ||
+        (builtInOperatorTypes.Contains m.DeclaringType &&
+            (m.Name.StartsWith("op_", StringComparison.Ordinal) ||
+             (Type.(=)(m.DeclaringType, typeof<string>) && m.IsStatic && (m.Name = "Concat" || m.Name = "Equals")))) ||
+        (isFSharpOperator m && isOrderedType true operandType)
+
+    let private isStringConcat (m:MethodInfo) =
+        not (isNull m) && Type.(=)(m.DeclaringType, typeof<string>) && m.Name = "Concat"
+
+    /// Constants of one type holding the same reference, or the same value for value
+    /// types and strings. A boxed value typed as object is compared by reference.
+    let private sameConstant (c1:ConstantExpression) (c2:ConstantExpression) =
+        Type.(=)(c1.Type, c2.Type) &&
+        (obj.ReferenceEquals(c1.Value, c2.Value) ||
+         (not (isNull c1.Value || isNull c2.Value) &&
+          (c1.Type.IsValueType || Type.(=)(c1.Type, typeof<string>)) &&
+          c1.Value.Equals c2.Value))
+
+    /// Reads only: parameters, constants, instance members and built-in operators, with
+    /// no call, Invoke, New, index or assignment anywhere (to a bounded depth), so the
+    /// expression gives one value however many times it is evaluated.
+    let rec private readsOnly (depth:int) (e:Expression) =
+        depth > 0 && not (isNull e) &&
+        match e with
+        | :? ParameterExpression | :? ConstantExpression -> true
+        | :? MemberExpression as me -> readsOnly (depth - 1) me.Expression
+        | :? UnaryExpression as ue ->
+            isNull ue.Method &&
+            (match ue.NodeType with
+             | ExpressionType.Not | ExpressionType.Negate | ExpressionType.NegateChecked | ExpressionType.UnaryPlus
+             | ExpressionType.Convert | ExpressionType.ConvertChecked | ExpressionType.TypeAs -> true
+             | _ -> false) &&
+            readsOnly (depth - 1) ue.Operand
+        | :? BinaryExpression as be ->
+            isBuiltInOperator be.Method be.Left.Type && isNull be.Conversion &&
+            (match be.NodeType with
+             | ExpressionType.Add | ExpressionType.AddChecked | ExpressionType.Subtract | ExpressionType.SubtractChecked
+             | ExpressionType.Multiply | ExpressionType.MultiplyChecked | ExpressionType.Divide | ExpressionType.Modulo
+             | ExpressionType.And | ExpressionType.AndAlso | ExpressionType.Or | ExpressionType.OrElse | ExpressionType.ExclusiveOr
+             | ExpressionType.Equal | ExpressionType.NotEqual | ExpressionType.LessThan | ExpressionType.LessThanOrEqual
+             | ExpressionType.GreaterThan | ExpressionType.GreaterThanOrEqual | ExpressionType.Coalesce -> true
+             | _ -> false) &&
+            readsOnly (depth - 1) be.Left && readsOnly (depth - 1) be.Right
+        | :? ConditionalExpression as ce ->
+            readsOnly (depth - 1) ce.Test && readsOnly (depth - 1) ce.IfTrue && readsOnly (depth - 1) ce.IfFalse
+        | _ -> false
+
+    /// Two operands that always hold one value: one node that only reads, constants
+    /// holding the same reference or value, or the same instance member over such
+    /// operands. Parameters are the same by reference only (two lambdas may each have
+    /// an "x"), and anything holding a call, an Invoke, a New or an index is never the
+    /// same as another.
     let rec internal propertyMatch (p:Expression) (p2:Expression) =
-        if p = p2 then true
-        elif isNull p || isNull p2 || p.NodeType <> p2.NodeType then false
+        if obj.ReferenceEquals(p, p2) then readsOnly 32 p
+        elif isNull p || isNull p2 then false
         else
-        match p.NodeType, p, p2 with
-        | ExpressionType.MemberAccess, (:? MemberExpression as pe1), (:? MemberExpression as pe2) ->
-            // Fast checks first: member equality and reference equality of the instance path.
+        match p, p2 with
+        | (:? ConstantExpression as ce1), (:? ConstantExpression as ce2) -> sameConstant ce1 ce2
+        | (:? MemberExpression as pe1), (:? MemberExpression as pe2) ->
             // Separately built sub-expressions (e.g. x.Address in x.Address.City) are not
-            // reference-equal, so recurse to compare the instance path structurally.
-            (pe1.Member = pe2.Member) &&
-            (pe1.Expression = pe2.Expression || propertyMatch pe1.Expression pe2.Expression)
-        | ExpressionType.Constant, (:? ConstantExpression as ce1), (:? ConstantExpression as ce2) -> 
-            ce1.Value = ce2.Value
-        | ExpressionType.Parameter, (:? ParameterExpression as pe1), (:? ParameterExpression as pe2) ->
-            pe1.Name = pe2.Name && pe1.Type = pe2.Type
+            // reference-equal, so the instance path is compared structurally.
+            pe1.Member = pe2.Member && propertyMatch pe1.Expression pe2.Expression
         | _ -> false
         
+    /// Evaluating the operand cannot throw and has no effect: a parameter or a constant.
+    /// (A member read can throw: o.Flag on a null o.)
+    let internal cannotThrow (e:Expression) =
+        e :? ParameterExpression || e :? ConstantExpression
+
 
     /// We want to eliminate enum-types and constants like 1 or "a".
     /// But the constant value can also be another complex object, such as IQueryable.
@@ -52,18 +150,21 @@ module Methods =
                 | None -> 
                      //Expression.Lambda(parentExpr).Compile().DynamicInvoke(null) |> getCorrectType
 
+                     // A member read that throws here is left in the tree to throw at run time.
                      let myVal = 
-                         match parentExpr.NodeType, parentExpr with
-                         | ExpressionType.MemberAccess, (:? MemberExpression as mainNode) ->
-                             match mainNode.Member with
-                             | :? FieldInfo as fieldInfo when not(isNull fieldInfo) ->
-                                fieldInfo.GetValue ce.Value
-                             | :? PropertyInfo as propInfo when not(isNull propInfo) ->
-                                propInfo.GetValue(ce.Value, null)
+                         try
+                             match parentExpr.NodeType, parentExpr with
+                             | ExpressionType.MemberAccess, (:? MemberExpression as mainNode) ->
+                                 match mainNode.Member with
+                                 | :? FieldInfo as fieldInfo when not(isNull fieldInfo) ->
+                                    fieldInfo.GetValue ce.Value
+                                 | :? PropertyInfo as propInfo when not(isNull propInfo) ->
+                                    propInfo.GetValue(ce.Value, null)
+                                 | _ -> ce.Value
+                             // UnaryExpression convert
                              | _ -> ce.Value
-                         // UnaryExpression convert
-                         | _ -> ce.Value
-                     myVal |> getCorrectType
+                         with _ -> null
+                     if isNull myVal then None else myVal |> getCorrectType
                 | x -> x
         | _ -> None
     
@@ -71,16 +172,20 @@ module Methods =
     /// The purpose of this is to optimize away already known constant=constant style expressions.
     ///   7 > 8      -->   False
     /// "G" = "G"    -->   True
+    /// Only a comparison by value that returns bool: a built-in operator, and not the
+    /// reference comparison of two objects (no Method on reference-typed operands).
     let ``replace constant comparison`` (e:Expression) =
         match e with
-        | (:? BinaryExpression as ce) -> 
+        | (:? BinaryExpression as ce)
+            when Type.(=)(ce.Type, typeof<bool>) && isBuiltInOperator ce.Method ce.Left.Type
+                 && (not (isNull ce.Method) || ce.Left.Type.IsValueType) ->
             let (|Constant|_|) (e:Expression) = 
                 match e.NodeType, e with 
                 | ExpressionType.Constant, (:? ConstantExpression as ce) when (ce.Value :? IComparable) -> Some (ce.Value :?> IComparable)
-                | ExpressionType.Convert, (:? UnaryExpression as ue) -> ``constant basic type`` ue ue.Operand
+                | ExpressionType.Convert, (:? UnaryExpression as ue) when isNull ue.Method -> ``constant basic type`` ue ue.Operand
                 | _ -> None
             match ce.Left, ce.Right with
-            | Constant l, Constant r -> 
+            | Constant l, Constant r when Type.(=)(l.GetType(), r.GetType()) ->
                 let createbool b = Expression.Constant(b,  typeof<bool>) :> Expression
                 match e.NodeType with
                 | ExpressionType.Equal              -> createbool (l=r)
@@ -93,61 +198,74 @@ module Methods =
             | _ -> e
         | _ -> e
 
-    /// Check if a type is an anonymous type without expensive operations
+    /// A tuple, whose ItemN is its constructor's argument N: System.Tuple, System.ValueTuple,
+    /// or an AnonymousObject (the F# query one, or a LINQ provider's own).
+    let private isTupleType (t: Type) =
+        t.Name.StartsWith("AnonymousObject", StringComparison.OrdinalIgnoreCase) ||
+        (t.IsGenericType &&
+            (let name = t.GetGenericTypeDefinition().FullName
+             name.StartsWith("System.Tuple`", StringComparison.Ordinal) ||
+             name.StartsWith("System.ValueTuple`", StringComparison.Ordinal)))
+
+    /// A compiler-generated anonymous type (C#, F# or VB).
     let private isAnonymousType (t: Type) =
-        let name = t.Name
-        name.StartsWith("AnonymousObject", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("<>f__AnonymousType", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("Tuple", StringComparison.OrdinalIgnoreCase)
+        t.Name.StartsWith("<>f__AnonymousType", StringComparison.OrdinalIgnoreCase) ||
+        t.Name.StartsWith("VB$AnonymousType", StringComparison.OrdinalIgnoreCase)
+
+    let private memberType (m: MemberInfo) =
+        match m with
+        | :? PropertyInfo as p -> p.PropertyType
+        | :? FieldInfo as f -> f.FieldType
+        | _ -> null
 
     /// Purpose of this is to replace non-used anonymous types:
     /// new AnonymousObject(Item1 = x, Item2 = "").Item1    -->   x
+    /// The member's constructor argument is found through NewExpression.Members (the
+    /// member at index i is initialised from argument i), for a tuple without Members
+    /// through its ItemN, and for an anonymous type without Members by the name of
+    /// the member the argument reads.
     let ``remove AnonymousType`` (e:Expression) =
         if e = Unchecked.defaultof<Expression> then e else 
         match e.NodeType, e with
         | ExpressionType.MemberAccess, ( :? MemberExpression as me)
-            when not(isNull me.Expression) && isAnonymousType me.Member.DeclaringType ->
-                //F# anonymous type/tuple: ItemN property maps to constructor argument N
-                let memberIndex =
-                    if me.Member.Name.StartsWith("Item") && me.Member.Name.Length > 4 then
+            when not(isNull me.Expression)
+                 && (isTupleType me.Member.DeclaringType || isAnonymousType me.Member.DeclaringType) ->
+                let wanted = memberType me.Member
+                let argument (ne: NewExpression) (idx: int) =
+                    if idx >= 0 && idx < ne.Arguments.Count && Type.(=) (ne.Arguments.[idx].Type, wanted) then ne.Arguments.[idx]
+                    else e
+                match me.Expression with
+                | :? NewExpression as ne when isNull wanted || isNull ne.Arguments -> e
+                | :? NewExpression as ne when not(isNull ne.Members) ->
+                    let idx = ne.Members |> Seq.tryFindIndex (fun m -> m.Name = me.Member.Name)
+                    match idx with
+                    | Some idx -> argument ne idx
+                    | None -> e
+                | :? NewExpression as ne when isTupleType me.Member.DeclaringType ->
+                    //F# anonymous type/tuple: ItemN property maps to constructor argument N
+                    if me.Member.Name.StartsWith("Item", StringComparison.Ordinal) && me.Member.Name.Length > 4 then
 #if NETSTANDARD21
                         let ok, i = Int32.TryParse(me.Member.Name.AsSpan 4)
 #else
                         let ok, i = Int32.TryParse(me.Member.Name.Substring 4)
 #endif
-                        if ok then ValueSome i else ValueNone
-                    else ValueNone
-                match memberIndex, me.Expression.NodeType, me.Expression, me.Member with
-                | ValueSome idx, ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p)
-                    when idx > 0 && not(isNull ne || isNull p)
-                         && ne.Arguments.Count >= idx && Type.(=) (ne.Arguments.[idx-1].Type, p.PropertyType) ->
-                    ne.Arguments.[idx-1] // We found it!
-                //C# anonymous type: match the property to a constructor argument by name
-                | _, ExpressionType.New, (:? NewExpression as ne), (:? PropertyInfo as p) when not(isNull ne.Arguments || isNull p) ->
-                        let selected = ne.Arguments |> Seq.tryPick(function
-                            | :? MemberExpression as ame when (not(isNull ame.Member)) && ame.Member.Name = me.Member.Name && Type.(=) (ame.Type, p.PropertyType) ->
-                               Some(ame :> Expression)
-                            |_ -> None)
-                        match selected with 
-                        | Some x -> x 
-                        | None when not(isNull ne.Members) -> 
-                            let selected = ne.Members |> Seq.tryPick(function
-                                | m when m.Name = me.Member.Name ->
-                                    let idx = ne.Members.IndexOf m
-                                    if ne.Arguments.Count > idx then
-                                        match ne.Arguments.[idx] with
-                                        | :? ParameterExpression as ape when Type.(=) (ape.Type, p.PropertyType) ->
-                                            Some(ape :> Expression)
-                                        | _ -> None
-                                    else None
-                                |_ -> None)
-                            match selected with Some x -> x | None -> e
-                        | None -> e
+                        if ok then argument ne (i - 1) else e
+                    else e
+                | :? NewExpression as ne ->
+                    //Anonymous type built without Members: match the property to a constructor argument by name
+                    let selected = ne.Arguments |> Seq.tryPick(function
+                        | :? MemberExpression as ame when (not(isNull ame.Member)) && ame.Member.Name = me.Member.Name && Type.(=) (ame.Type, wanted) ->
+                           Some(ame :> Expression)
+                        |_ -> None)
+                    match selected with
+                    | Some x -> x
+                    | None -> e
                 | _ -> e
-        | ExpressionType.Block, ( :? BlockExpression as be) when be.Expressions.Count = 1 -> 
+        | ExpressionType.Block, ( :? BlockExpression as be)
+            when be.Expressions.Count = 1 && be.Variables.Count = 0 && Type.(=) (be.Type, be.Expressions.[0].Type) ->
             // Empty code block
             be.Expressions.[0]
-        | ExpressionType.Block, ( :? BlockExpression as be) when be.Expressions.Count = 2 -> 
+        | ExpressionType.Block, ( :? BlockExpression as be) when be.Expressions.Count = 2 && be.Variables.Count = 1 ->
             // let x = y
             // x.Prop -> y.Prop
             match be.Expressions.[0].NodeType, be.Expressions.[0] with
@@ -156,7 +274,8 @@ module Methods =
                      && beAssign.Left = be.Variables.[0] -> 
                  
                     match be.Expressions.[1].NodeType, be.Expressions.[1] with
-                    | ExpressionType.MemberAccess, (:? MemberExpression as me) when me.Expression = be.Variables.[0] -> 
+                    | ExpressionType.MemberAccess, (:? MemberExpression as me)
+                        when me.Expression = be.Variables.[0] && Type.(=) (be.Type, me.Type) ->
                         Expression.MakeMemberAccess(beAssign.Right, me.Member) :> Expression
                     | _ -> e
             | _ -> e
@@ -164,22 +283,24 @@ module Methods =
 
 
     /// if false then x else y -> y 
+    /// (a branch of the conditional's own type only: a typed conditional keeps its type)
     let ``cut not used condition`` (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.Conditional,        (:? ConditionalExpression as ce) -> 
             match ce.Test.NodeType, ce.Test with // For now, only direct booleans conditions are optimized to select query:
-            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box true -> ce.IfTrue
-            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box false -> ce.IfFalse
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box true && Type.(=) (ce.Type, ce.IfTrue.Type) -> ce.IfTrue
+            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box false && Type.(=) (ce.Type, ce.IfFalse.Type) -> ce.IfFalse
             | _ -> e
         | _ -> e
 
     /// not(false) -> true 
+    /// (a plain bool constant only: Not on a Nullable<bool> constant stays Nullable<bool>)
     let ``not false is true``(e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.Not, (:? UnaryExpression as ue) -> 
+        | ExpressionType.Not, (:? UnaryExpression as ue) when isNull ue.Method ->
             match ue.Operand.NodeType, ue.Operand with
-            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box false -> Expression.Constant(true, typeof<bool>) :> Expression
-            | ExpressionType.Constant, (:? ConstantExpression as c) when c.Value = box true -> Expression.Constant(false, typeof<bool>) :> Expression
+            | ExpressionType.Constant, (:? ConstantExpression as c) when Type.(=) (c.Type, typeof<bool>) && c.Value = box false -> Expression.Constant(true, typeof<bool>) :> Expression
+            | ExpressionType.Constant, (:? ConstantExpression as c) when Type.(=) (c.Type, typeof<bool>) && c.Value = box true -> Expression.Constant(false, typeof<bool>) :> Expression
             | _ -> e
         | _ -> e
 
@@ -202,12 +323,9 @@ module Methods =
     [<return: Struct>]
     let inline internal (|ComparisonExpression|_|) (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.LessThan,           (:? BinaryExpression as e) -> ValueSome (e.NodeType, e.Left, e.Right)
-        | ExpressionType.LessThanOrEqual,    (:? BinaryExpression as e) -> ValueSome (e.NodeType, e.Left, e.Right)
-        | ExpressionType.GreaterThan,        (:? BinaryExpression as e) -> ValueSome (e.NodeType, e.Left, e.Right)
-        | ExpressionType.GreaterThanOrEqual, (:? BinaryExpression as e) -> ValueSome (e.NodeType, e.Left, e.Right)
-        | ExpressionType.Equal,              (:? BinaryExpression as e) -> ValueSome (e.NodeType, e.Left, e.Right)
-        | ExpressionType.NotEqual,           (:? BinaryExpression as e) -> ValueSome (e.NodeType, e.Left, e.Right)
+        | (ExpressionType.LessThan | ExpressionType.LessThanOrEqual | ExpressionType.GreaterThan | ExpressionType.GreaterThanOrEqual | ExpressionType.Equal | ExpressionType.NotEqual), (:? BinaryExpression as e)
+            // a built-in comparison returning bool (not one lifted to Nullable<bool>)
+            when Type.(=)(e.Type, typeof<bool>) && isBuiltInOperator e.Method e.Left.Type -> ValueSome (e.NodeType, e.Left, e.Right)
         | _ -> ValueNone
 
     [<return: Struct>]
@@ -219,7 +337,7 @@ module Methods =
     [<return: Struct>]
     let inline internal (|Not'|_|) (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.Not, (:? UnaryExpression as ue) -> ValueSome ue.Operand
+        | ExpressionType.Not, (:? UnaryExpression as ue) when isNull ue.Method -> ValueSome ue.Operand
         | _ -> ValueNone
 
     let inline internal (|True'|False'|NoHit'|) expr =
@@ -257,9 +375,9 @@ module Methods =
     [<return: Struct>]
     let inline internal (|Or'|_|) (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.OrElse, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> ValueSome(be.Left,be.Right)
-        | ExpressionType.Or, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> ValueSome(be.Left,be.Right)
-        | ExpressionType.Conditional, IfThenElse (left, True', right) -> //if A then true else B
+        | ExpressionType.OrElse, ( :? BinaryExpression as be) when isBooleanExpr be.Type && isNull be.Method -> ValueSome(be.Left,be.Right)
+        | ExpressionType.Or, ( :? BinaryExpression as be) when isBooleanExpr be.Type && isNull be.Method -> ValueSome(be.Left,be.Right)
+        | ExpressionType.Conditional, IfThenElse (left, True', right) when isBooleanExpr e.Type -> //if A then true else B
             ValueSome (left, right)
         | _ -> ValueNone
 
@@ -268,9 +386,9 @@ module Methods =
     [<return: Struct>]
     let inline internal (|And'|_|) (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.AndAlso, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> ValueSome(be.Left,be.Right)
-        | ExpressionType.And, ( :? BinaryExpression as be) when isBooleanExpr be.Type -> ValueSome(be.Left,be.Right)
-        | ExpressionType.Conditional, IfThenElse (left, right, False') -> //if A then B else false
+        | ExpressionType.AndAlso, ( :? BinaryExpression as be) when isBooleanExpr be.Type && isNull be.Method -> ValueSome(be.Left,be.Right)
+        | ExpressionType.And, ( :? BinaryExpression as be) when isBooleanExpr be.Type && isNull be.Method -> ValueSome(be.Left,be.Right)
+        | ExpressionType.Conditional, IfThenElse (left, right, False') when isBooleanExpr e.Type -> //if A then B else false
             ValueSome (left, right)
         | _ -> ValueNone
 
@@ -360,53 +478,77 @@ module Methods =
         | Or' (Not' p, p1) when propertyMatch p p1 -> Expression.Constant(true, typeof<bool>) :> Expression
         | noHit -> noHit
 
-    /// Helper function to compare two constant expressions  
+    /// Helper function to compare two constant expressions (of one runtime type:
+    /// CompareTo throws on a value of another type)
     let private compareConstants (left: Expression) (right: Expression) =
         if left :? ConstantExpression && right :? ConstantExpression then
             let lCe = left :?> ConstantExpression
             let rCe = right :?> ConstantExpression
-            if lCe.Value :? IComparable && rCe.Value :? IComparable then
-                let lComp = lCe.Value :?> IComparable
-                let rComp = rCe.Value :?> IComparable
+            match lCe.Value, rCe.Value with
+            // strings are ordered by the F# comparison operators only, which are ordinal
+            | (:? string as l), (:? string as r) -> ValueSome (String.CompareOrdinal(l, r))
+            | (:? IComparable as lComp), (:? IComparable as rComp) when Type.(=)(lComp.GetType(), rComp.GetType()) ->
                 ValueSome (lComp.CompareTo rComp)
-            else ValueNone
+            | _ -> ValueNone
         else ValueNone
+
+    let private isNaNConstant (e: Expression) =
+        match e with
+        | :? ConstantExpression as ce ->
+            match ce.Value with
+            | :? float as f -> Double.IsNaN f
+            | :? float32 as f -> Single.IsNaN f
+            | _ -> false
+        | _ -> false
+
+    /// A type whose == and != a node gets without a Method: a primitive, an enum or
+    /// one of builtInOperatorTypes. (Any other type would be compared by reference.)
+    let private hasOwnEquality (t: Type) =
+        t.IsPrimitive || t.IsEnum || builtInOperatorTypes.Contains t
+
+    /// The range rewrites hold for two-valued comparisons: not over a Nullable<T>
+    /// operand (a null makes every comparison false, but null == null true) and not
+    /// against a NaN constant (false in every comparison, yet the smallest in CompareTo).
+    let private isRangeComparison (variable: Expression) (leftVal: Expression) (rightVal: Expression) =
+        not (isNullableType variable.Type || isNullableType leftVal.Type || isNullableType rightVal.Type
+             || isNaNConstant variable || isNaNConstant leftVal || isNaNConstant rightVal)
 
     /// Optimize range/interval comparisons with proper max/min logic
     let ``optimize comparison ranges`` = fun exp ->
         match exp with
-        | And' (ComparisonExpression (leftOp, leftVar, leftVal), ComparisonExpression (rightOp, rightVar, rightVal)) 
-            when propertyMatch leftVar rightVar ->
+        | And' ((ComparisonExpression (leftOp, leftVar, leftVal) as left), (ComparisonExpression (rightOp, rightVar, rightVal) as right)) 
+            when propertyMatch leftVar rightVar && isRangeComparison leftVar leftVal rightVal ->
             match leftOp, rightOp with
             // x > a && x > b -> x > max(a,b) - choose the more restrictive condition
             | ExpressionType.GreaterThan, ExpressionType.GreaterThan ->
                 match compareConstants leftVal rightVal with
-                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression  // left > right
-                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, rightVar, rightVal) :> Expression // right > left  
-                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression // equal
+                | ValueSome cmp when cmp > 0 -> left  // left > right
+                | ValueSome cmp when cmp < 0 -> right // right > left  
+                | ValueSome _ when propertyMatch leftVal rightVal -> left // equal
                 | _ -> exp
             | ExpressionType.GreaterThanOrEqual, ExpressionType.GreaterThanOrEqual ->
                 match compareConstants leftVal rightVal with
-                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
-                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, rightVar, rightVal) :> Expression
-                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
+                | ValueSome cmp when cmp > 0 -> left
+                | ValueSome cmp when cmp < 0 -> right
+                | ValueSome _ when propertyMatch leftVal rightVal -> left
                 | _ -> exp
             // x < a && x < b -> x < min(a,b) - choose the more restrictive condition  
             | ExpressionType.LessThan, ExpressionType.LessThan ->
                 match compareConstants leftVal rightVal with
-                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression  // left < right
-                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThan, rightVar, rightVal) :> Expression // right < left
-                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression
+                | ValueSome cmp when cmp < 0 -> left  // left < right
+                | ValueSome cmp when cmp > 0 -> right // right < left
+                | ValueSome _ when propertyMatch leftVal rightVal -> left
                 | _ -> exp
             | ExpressionType.LessThanOrEqual, ExpressionType.LessThanOrEqual ->
                 match compareConstants leftVal rightVal with
-                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
-                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, rightVar, rightVal) :> Expression
-                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
+                | ValueSome cmp when cmp < 0 -> left
+                | ValueSome cmp when cmp > 0 -> right
+                | ValueSome _ when propertyMatch leftVal rightVal -> left
                 | _ -> exp
-            // x >= a && x <= a -> x = a (only when values are equal)
+            // x >= a && x <= a -> x = a (only when values are equal, and of a type
+            // whose == Expression.Equal finds by itself)
             | ExpressionType.GreaterThanOrEqual, ExpressionType.LessThanOrEqual 
-            | ExpressionType.LessThanOrEqual, ExpressionType.GreaterThanOrEqual when propertyMatch leftVal rightVal ->
+            | ExpressionType.LessThanOrEqual, ExpressionType.GreaterThanOrEqual when propertyMatch leftVal rightVal && hasOwnEquality leftVar.Type ->
                 Expression.MakeBinary(ExpressionType.Equal, leftVar, leftVal) :> Expression
             // x > a && x < a -> false
             | ExpressionType.GreaterThan, ExpressionType.LessThan
@@ -418,34 +560,34 @@ module Methods =
                     when propertyMatch leftVal rightVal ->
                 Expression.Constant(false, typeof<bool>) :> Expression
             | _ -> exp
-        | Or' (ComparisonExpression (leftOp, leftVar, leftVal), ComparisonExpression (rightOp, rightVar, rightVal)) 
-            when propertyMatch leftVar rightVar ->
+        | Or' ((ComparisonExpression (leftOp, leftVar, leftVal) as left), (ComparisonExpression (rightOp, rightVar, rightVal) as right)) 
+            when propertyMatch leftVar rightVar && isRangeComparison leftVar leftVal rightVal ->
             match leftOp, rightOp with
             // x > a || x > b -> x > min(a,b) - choose the less restrictive condition
             | ExpressionType.GreaterThan, ExpressionType.GreaterThan ->
                 match compareConstants leftVal rightVal with
-                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, rightVar, rightVal) :> Expression  // left > right
-                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression // right > left  
-                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThan, leftVar, leftVal) :> Expression // equal
+                | ValueSome cmp when cmp > 0 -> right  // left > right
+                | ValueSome cmp when cmp < 0 -> left // right > left  
+                | ValueSome _ when propertyMatch leftVal rightVal -> left // equal
                 | _ -> exp
             | ExpressionType.GreaterThanOrEqual, ExpressionType.GreaterThanOrEqual ->
                 match compareConstants leftVal rightVal with
-                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, rightVar, rightVal) :> Expression
-                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
-                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.GreaterThanOrEqual, leftVar, leftVal) :> Expression
+                | ValueSome cmp when cmp > 0 -> right
+                | ValueSome cmp when cmp < 0 -> left
+                | ValueSome _ when propertyMatch leftVal rightVal -> left
                 | _ -> exp
             // x < a || x < b -> x < max(a,b) - choose the less restrictive condition
             | ExpressionType.LessThan, ExpressionType.LessThan ->
                 match compareConstants leftVal rightVal with
-                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThan, rightVar, rightVal) :> Expression  // left < right
-                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression // right < left
-                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThan, leftVar, leftVal) :> Expression
+                | ValueSome cmp when cmp < 0 -> right  // left < right
+                | ValueSome cmp when cmp > 0 -> left // right < left
+                | ValueSome _ when propertyMatch leftVal rightVal -> left
                 | _ -> exp
             | ExpressionType.LessThanOrEqual, ExpressionType.LessThanOrEqual ->
                 match compareConstants leftVal rightVal with
-                | ValueSome cmp when cmp < 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, rightVar, rightVal) :> Expression
-                | ValueSome cmp when cmp > 0 -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
-                | ValueSome _ when propertyMatch leftVal rightVal -> Expression.MakeBinary(ExpressionType.LessThanOrEqual, leftVar, leftVal) :> Expression
+                | ValueSome cmp when cmp < 0 -> right
+                | ValueSome cmp when cmp > 0 -> left
+                | ValueSome _ when propertyMatch leftVal rightVal -> left
                 | _ -> exp
             // x >= a || x <= a -> true
             // (not for nullable/float operands: with null or NaN both sides are false)
@@ -461,7 +603,7 @@ module Methods =
             // (not for nullable/float operands: with null or NaN the left is false but x <> a is true)
             | ExpressionType.GreaterThan, ExpressionType.LessThan
             | ExpressionType.LessThan, ExpressionType.GreaterThan
-                    when propertyMatch leftVal rightVal && not(isThreeValuedComparison leftVar leftVal) ->
+                    when propertyMatch leftVal rightVal && not(isThreeValuedComparison leftVar leftVal) && hasOwnEquality leftVar.Type ->
                 Expression.MakeBinary(ExpressionType.NotEqual, leftVar, leftVal) :> Expression
             | _ -> exp
         | noHit -> noHit
@@ -494,6 +636,13 @@ module Methods =
             Expression.Call(isNullOrEmptyMethod, str) :> Expression
         | noHit -> noHit
 
+    // Evaluation order of the boolean rewrites (And'/Or' short-circuit, so an operand
+    // may guard the ones after it: o != null && o.Flag):
+    // a rewrite may evaluate fewer operands than the original, but each operand it
+    // does evaluate the original evaluates too on that input, and the operands that
+    // survive stay in their original left-to-right order. A shape whose only
+    // simplification would move an operand ahead of one that was before it is
+    // rewritten only when the operand moved cannotThrow.
     let commute_absorb = fun exp ->
         match exp with
         | And' innercontent ->
@@ -510,13 +659,15 @@ module Methods =
 
             | (p, And'(p2,(Or'(p1,_)))) 
             | (p, And'(p2,(Or'(_,p1)))) 
-            | (And'(p2,(Or'(p1,_))), p) 
-            | (And'(p2,(Or'(_,p1))), p) 
             | (p, And'((Or'(p1,_)),p2)) 
             | (p, And'((Or'(_,p1)),p2)) 
             | (And'((Or'(p1,_)),p2), p) 
-            | (And'((Or'(_,p1)),p2), p) 
                 when propertyMatch p p1  -> Expression.AndAlso(p,p2) :> Expression
+            | (And'(p2,(Or'(p1,_))), p)
+            | (And'(p2,(Or'(_,p1))), p)
+                when propertyMatch p p1  -> Expression.AndAlso(p2,p) :> Expression
+            | (And'((Or'(_,p1)),p2), p)
+                when propertyMatch p p1 && cannotThrow p -> Expression.AndAlso(p,p2) :> Expression
             | _ -> exp
         | Or' innercontent ->
             match innercontent with
@@ -524,16 +675,16 @@ module Methods =
             | (p, Or'(p2, And' (_, p1)))
             | (p, Or'(And' (p1, _), p2))
             | (p, Or'(And' (_, p1), p2)) 
-            | (Or'(And' (p1, _), p2), p)
-            | (Or'(And' (_, p1), p2), p) when propertyMatch p p1 -> Expression.OrElse(p,p2) :> Expression
+            | (Or'(And' (p1, _), p2), p) when propertyMatch p p1 -> Expression.OrElse(p,p2) :> Expression
+            | (Or'(And' (_, p1), p2), p) when propertyMatch p p1 && cannotThrow p -> Expression.OrElse(p,p2) :> Expression
             | (Or'(p2, And' (p1, _)), p)
             | (Or'(p2, And' (_, p1)), p) when propertyMatch p p1 -> Expression.OrElse(p2,p) :> Expression
             | (Or'(p, p2), And' (p1, _))
             | (Or'(p, p2), And' (_, p1))
             | (And' (p1, _), Or'(p, p2))
             | (And' (p1, _), Or'(p2, p))
-            | (And' (_, p1), Or'(p, p2))
-            | (And' (_, p1), Or'(p2, p)) when propertyMatch p p1 -> Expression.OrElse(p,p2) :> Expression
+            | (And' (_, p1), Or'(p, p2)) when propertyMatch p p1 -> Expression.OrElse(p,p2) :> Expression
+            | (And' (_, p1), Or'(p2, p)) when propertyMatch p p1 && cannotThrow p -> Expression.OrElse(p,p2) :> Expression
             | (Or'(p2, p), And' (p1, _))
             | (Or'(p2, p), And' (_, p1)) when propertyMatch p p1 -> Expression.OrElse(p2,p) :> Expression
             | _ -> exp
@@ -593,11 +744,11 @@ module Methods =
 
             //// Eliminate negations of p towards Disjunctive Normal Form (after deMorgan already applied)
 
-            | (Or'(Not' p3, p), And'(p4, Not' p1)) when propertyMatch p p1 -> Expression.OrElse(Expression.OrElse(Expression.Not(p3),p4), p) :> Expression
+            | (Or'(Not' p3, p), And'(p4, Not' p1)) when propertyMatch p p1 -> Expression.OrElse(Expression.OrElse(Expression.Not(p3),p), p4) :> Expression
             | (Or'(p, Not' p3), And'(p4, Not' p1)) when propertyMatch p p1 -> Expression.OrElse(p, Expression.OrElse(Expression.Not(p3),p4)) :> Expression
-            | (Or'(Not' p3, p), And'(Not' p1, p4)) when propertyMatch p p1 -> Expression.OrElse(Expression.OrElse(Expression.Not(p3),p4), p) :> Expression
+            | (Or'(Not' p3, p), And'(Not' p1, p4)) when propertyMatch p p1 -> Expression.OrElse(Expression.OrElse(Expression.Not(p3),p), p4) :> Expression
             | (Or'(p, Not' p3), And'(Not' p1, p4)) when propertyMatch p p1 -> Expression.OrElse(p, Expression.OrElse(Expression.Not(p3),p4)) :> Expression
-            | (And'(p4, Not' p1), Or'(Not' p3, p)) when propertyMatch p p1 -> Expression.OrElse(p4, Expression.OrElse(p,Expression.Not(p3))) :> Expression
+            | (And'(p4, Not' p1), Or'(Not' p3, p)) when propertyMatch p p1 -> Expression.OrElse(p4, Expression.OrElse(Expression.Not(p3),p)) :> Expression
             | (And'(p4, Not' p1), Or'(p, Not' p3)) when propertyMatch p p1 -> Expression.OrElse(p4, Expression.OrElse(p,Expression.Not(p3))) :> Expression
             | (And'(Not' p1, p4), Or'(Not' p3, p)) when propertyMatch p p1 -> Expression.OrElse(p, Expression.OrElse(p4, Expression.Not(p3))) :> Expression
             | (And'(Not' p1, p4), Or'(p, Not' p3)) when propertyMatch p p1 -> Expression.OrElse(p, Expression.OrElse(p4, Expression.Not(p3))) :> Expression
@@ -607,19 +758,21 @@ module Methods =
             | (Not'(Or'(p, p3)), And'(Not' p1, p4)) when (propertyMatch p p1) -> Expression.AndAlso(Expression.Not(p), Expression.OrElse(Expression.Not p3, p4)) :> Expression
             | (And'(Not' p1, p4), Not'(Or'(p3, p))) 
             | (And'(Not' p1, p4), Not'(Or'(p, p3))) when (propertyMatch p p1) -> Expression.AndAlso(Expression.Not(p), Expression.OrElse(p4, Expression.Not p3)) :> Expression
-            | (Not'(Or'(p3, p)), And'(Not' p1, p4))  
             | (Not'(Or'(p3, p)), And'(p4, Not' p1)) when (propertyMatch p p1) -> Expression.AndAlso(Expression.OrElse(Expression.Not p3, p4), Expression.Not(p)) :> Expression
-            | (And'(p4, Not' p1), Not'(Or'(p3, p)))  
-            | (And'(p4, Not' p1), Not'(Or'(p, p3))) when (propertyMatch p p1) -> Expression.AndAlso(Expression.OrElse(p4, Expression.Not p3), Expression.Not(p)) :> Expression
+            | (Not'(Or'(p3, p)), And'(Not' p1, p4))
+                when (propertyMatch p p1 && cannotThrow p4) -> Expression.AndAlso(Expression.OrElse(Expression.Not p3, p4), Expression.Not(p)) :> Expression
+            | (And'(p4, Not' p1), Not'(Or'(p3, p))) when (propertyMatch p p1) -> Expression.AndAlso(Expression.OrElse(p4, Expression.Not p3), Expression.Not(p)) :> Expression
+            | (And'(p4, Not' p1), Not'(Or'(p, p3)))
+                when (propertyMatch p p1 && cannotThrow p3) -> Expression.AndAlso(Expression.OrElse(p4, Expression.Not p3), Expression.Not(p)) :> Expression
 
             | (Or'(p, p2), Not'(Or'(p3, p1))) 
-            | (Or'(p, p2), Not'(Or'(p1, p3))) 
+            | (Or'(p, p2), Not'(Or'(p1, p3))) when (propertyMatch p p1) -> Expression.OrElse(p, Expression.OrElse(p2, Expression.Not p3)) :> Expression
             | (Not'(Or'(p1, p3)), Or'(p, p2)) 
-            | (Not'(Or'(p1, p3)), Or'(p2, p)) when (propertyMatch p p1) -> Expression.OrElse(p, Expression.OrElse(p2, Expression.Not p3)) :> Expression
+            | (Not'(Or'(p1, p3)), Or'(p2, p)) when (propertyMatch p p1) -> Expression.OrElse(p, Expression.OrElse(Expression.Not p3, p2)) :> Expression
             | (Or'(p2, p), Not'(Or'(p3, p1))) 
             | (Or'(p2, p), Not'(Or'(p1, p3))) when (propertyMatch p p1) -> Expression.OrElse(p2, Expression.OrElse(p, Expression.Not p3)) :> Expression
-            | (Not'(Or'(p3, p1)), Or'(p, p2)) 
-            | (Not'(Or'(p3, p1)), Or'(p2, p)) when (propertyMatch p p1) -> Expression.OrElse(Expression.Not p3, Expression.OrElse(p, p2)) :> Expression
+            | (Not'(Or'(p3, p1)), Or'(p, p2)) when (propertyMatch p p1) -> Expression.OrElse(Expression.Not p3, Expression.OrElse(p, p2)) :> Expression
+            | (Not'(Or'(p3, p1)), Or'(p2, p)) when (propertyMatch p p1) -> Expression.OrElse(Expression.Not p3, Expression.OrElse(p2, p)) :> Expression
 
             | _ -> exp
             
@@ -633,10 +786,11 @@ module Methods =
             // All the following are decorated with And'( ... )
             match innercontent with
             |(Not' (And' (p, p2)), p1) 
-            |(Not' (And' (p2, p)), p1) 
             |(p1, Not' (And' (p, p2))) 
             |(p1, Not' (And' (p2, p))) 
                 when propertyMatch p p1 -> Expression.AndAlso(p, Expression.Not p2) :> Expression
+            |(Not' (And' (p2, p)), p1)
+                when propertyMatch p p1 -> Expression.AndAlso(Expression.Not p2, p) :> Expression
             |(And' (p, _), Not' p1)
             |(And' (Not' p, _), p1)
             |(Not' p1, And' (p, _))
@@ -709,11 +863,13 @@ module Methods =
         | ExpressionType.Equal | ExpressionType.NotEqual -> true
         | _ -> false
 
-    /// One comparison operator over matching operands.
+    /// One built-in comparison operator over matching operands.
     let private sameComparison (a: Expression) (b: Expression) =
         isComparison a.NodeType && a.NodeType = b.NodeType &&
             match a, b with
-            | (:? BinaryExpression as a), (:? BinaryExpression as b) -> propertyMatch a.Left b.Left && propertyMatch a.Right b.Right
+            | (:? BinaryExpression as a), (:? BinaryExpression as b) ->
+                isBuiltInOperator a.Method a.Left.Type && a.Method = b.Method && Type.(=)(a.Type, b.Type)
+                && propertyMatch a.Left b.Left && propertyMatch a.Right b.Right
             | _ -> false
 
     /// The operands of an And' (isAnd) or Or' link.
@@ -904,15 +1060,104 @@ module Methods =
                 // reflection wrapper type (always System.Reflection.Runtime...), never the property
                 // type, so it filtered nothing; keep evaluating all static FSI/display-class properties.
                 | :? PropertyInfo ->
-                        Expression.Constant(Expression.Lambda(me).Compile().DynamicInvoke(null), me.Type) :> Expression
+                        // A getter that throws here is left in the tree to throw at run time.
+                        try Expression.Constant(Expression.Lambda(me).Compile().DynamicInvoke(null), me.Type) :> Expression
+                        with _ -> e
                 | _ -> e
         | _ -> e
 
     // ------------------------------------- //
+    let private isIntegralZero (v:obj) =
+        match v with
+        | :? Int32  as i -> i = 0
+        | :? Int64  as i -> i = 0L
+        | :? UInt32 as i -> i = 0u
+        | :? UInt64 as i -> i = 0uL
+        | :? Int16  as i -> i = 0s
+        | :? UInt16 as i -> i = 0us
+        | :? int8   as i -> i = 0y
+        | :? uint8  as i -> i = 0uy
+        | :? bigint as i -> i.IsZero
+        | _ -> false
+
+    /// An integral or decimal zero. Decimals are the same by value: 0.00 is 0, and a
+    /// result may carry another scale than the original's (1.50 for 1.5).
+    let private isExactZero (v:obj) =
+        match v with
+        | :? decimal as d -> d = 0m
+        | _ -> isIntegralZero v
+
+    /// The constant c for which x + c (x - c when subtracting) is x for every x:
+    /// an integral or decimal zero, and for floats only -0.0 when adding and 0.0 when
+    /// subtracting (x + 0.0 and x - (-0.0) turn -0.0 into 0.0).
+    let private isAdditiveIdentity (subtracting:bool) (v:obj) =
+        match v with
+        | :? float   as f -> f = 0.0  && ((1.0  / f < 0.0)  <> subtracting)
+        | :? float32 as f -> f = 0.0f && ((1.0f / f < 0.0f) <> subtracting)
+        | _ -> isExactZero v
+
+    /// The constant c for which x * c and x / c are x for every x: an integral,
+    /// decimal or floating-point one.
+    let private isMultiplicativeIdentity (v:obj) =
+        match v with
+        | :? decimal as d -> d = 1m
+        | :? Int32   as i -> i = 1
+        | :? Int64   as i -> i = 1L
+        | :? UInt32  as i -> i = 1u
+        | :? UInt64  as i -> i = 1uL
+        | :? Int16   as i -> i = 1s
+        | :? UInt16  as i -> i = 1us
+        | :? int8    as i -> i = 1y
+        | :? uint8   as i -> i = 1uy
+        | :? bigint  as i -> i.IsOne
+        | :? float   as f -> f = 1.0
+        | :? float32 as f -> f = 1.0f
+        | _ -> false
+
+    /// a + b (a * b when multiplying) of two constants of one integral type, wrapping
+    /// as the unchecked operator of that type does; null for any other type.
+    let private integralOp (multiplying:bool) (a:obj) (b:obj) : obj =
+        match a, b with
+        | (:? Int32  as x), (:? Int32  as y) -> box (if multiplying then x * y else x + y)
+        | (:? Int64  as x), (:? Int64  as y) -> box (if multiplying then x * y else x + y)
+        | (:? UInt32 as x), (:? UInt32 as y) -> box (if multiplying then x * y else x + y)
+        | (:? UInt64 as x), (:? UInt64 as y) -> box (if multiplying then x * y else x + y)
+        | (:? Int16  as x), (:? Int16  as y) -> box (if multiplying then x * y else x + y)
+        | (:? UInt16 as x), (:? UInt16 as y) -> box (if multiplying then x * y else x + y)
+        | (:? int8   as x), (:? int8   as y) -> box (if multiplying then x * y else x + y)
+        | (:? uint8  as x), (:? uint8  as y) -> box (if multiplying then x * y else x + y)
+        | (:? bigint as x), (:? bigint as y) -> box (if multiplying then x * y else x + y)
+        | _ -> null
+
+    /// ((x + 2) + 2) = x + 4, ((2 + x) + 2) = x + 4, ((x - 2) - 2) = x - 4, ((x * 2) * 2) = x * 4
+    /// Integral types in unchecked nodes only: the merged constant wraps as the two
+    /// operations did. Floats round, and decimals round at their last digit and
+    /// overflow, so their constants are not regrouped, and neither are checked or
+    /// Nullable nodes.
+    [<return: Struct>]
+    let private (|Regrouped|_|) (ce:BinaryExpression) (left:Expression) =
+        match ce.NodeType, left, ce.Right with
+        | (ExpressionType.Add | ExpressionType.Subtract | ExpressionType.Multiply), (:? BinaryExpression as inner), (:? ConstantExpression as ri)
+            when inner.NodeType = ce.NodeType && isBuiltInOperator inner.Method inner.Left.Type && not (isNullableType ri.Type) ->
+            let regroup (kept: Expression) (irc: ConstantExpression) =
+                if not (Type.(=) (irc.Type, ri.Type)) then ValueNone
+                else
+                match integralOp (ce.NodeType = ExpressionType.Multiply) irc.Value ri.Value with
+                | null -> ValueNone
+                | merged -> ValueSome (Expression.MakeBinary(ce.NodeType, kept, Expression.Constant(merged, irc.Type)) :> Expression)
+            match inner.Left, inner.Right with
+            // Keep the NON-constant operand of the inner operation. Subtraction can only
+            // be combined from the right side constants: (2 - x) - 2 is not x - 4.
+            | (:? ConstantExpression as irc), kept when not (kept :? ConstantExpression) && ce.NodeType <> ExpressionType.Subtract -> regroup kept irc
+            | kept, (:? ConstantExpression as irc) -> regroup kept irc
+            | _ -> ValueNone
+        | _ -> ValueNone
+
     /// Evaluate simple math between two constants.
     ///  9  *  3     -->    27
     /// "G" + "G"    -->   "GG"
-    let ``evaluate basic constant math`` (e:Expression) =
+    /// Only nodes whose operator is the built-in one (isBuiltInOperator).
+    let private basicConstantMath (e:Expression) =
         match e.NodeType, e with
         | ExpressionType.Add, (:? BinaryExpression as ce)
         | ExpressionType.AddChecked, (:? BinaryExpression as ce)
@@ -923,7 +1168,7 @@ module Methods =
         | ExpressionType.Divide, (:? BinaryExpression as ce)
         | ExpressionType.Modulo, (:? BinaryExpression as ce)
                  -> 
-            if ce.Left.Type <> ce.Right.Type then e
+            if ce.Left.Type <> ce.Right.Type || not (isBuiltInOperator ce.Method ce.Left.Type) then e
             else
             match ce.Left.NodeType, ce.Right.NodeType, ce.Left, ce.Right with
             | ExpressionType.Constant, ExpressionType.Constant, (:? ConstantExpression as le), (:? ConstantExpression as ri) ->
@@ -1076,217 +1321,52 @@ module Methods =
                         | _ -> e
                      with :? OverflowException -> e)
                 | _ -> e
-            | ExpressionType.Add, ExpressionType.Constant, (:? BinaryExpression as inner), (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Add ->
-                match inner.Left.NodeType, inner.Right.NodeType, inner.Left, inner.Right with
+            | ExpressionType.Add, ExpressionType.Constant, (:? BinaryExpression as inner), (:? ConstantExpression as ri)
+                when e.NodeType = ExpressionType.Add && isStringConcat ce.Method && isStringConcat inner.Method ->
                 // Strings only work on right-side:  x + "a" + "c" = x + "ac"
-                | _, ExpressionType.Constant, _, (:? ConstantExpression as irc) when Type.(=) (irc.Type, typeof<string>) && Type.(=) (irc.Type, ri.Type) ->
-                    // http://stackoverflow.com/questions/7027384/the-binary-operator-add-is-not-defined-for-the-types-system-string-and-syste
-                    let concatMethod = typeof<string>.GetMethod("Concat", [| typeof<string>; typeof<string> |]); 
-                    match irc.Value, ri.Value with
-                    | (:? string  as lstr), (:? string  as rstr) when Type.(=) (irc.Type, typeof<string>)  -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type), concatMethod) :> Expression 
-                    | _ -> e
-                // ((x + 2) + 2) = x + 4 and ((2 + x) + 2) = x + 4
-                // Keep the NON-constant operand of the inner addition; the two orientations
-                // bind it on opposite sides, so they cannot share a single or-pattern case.
-                | ExpressionType.Constant, rnt, (:? ConstantExpression as irc), _ when rnt <> ExpressionType.Constant && Type.(=) (irc.Type, ri.Type) ->
-                    match irc.Value, ri.Value with
-                    | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (irc.Type, typeof<decimal>) -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (irc.Type, typeof<float32>) -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? double  as lstr), (:? double  as rstr) when Type.(=) (irc.Type, typeof<double>)  -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? Int32   as lstr), (:? Int32   as rstr) when Type.(=) (irc.Type, typeof<Int32>)   -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? Int64   as lstr), (:? Int64   as rstr) when Type.(=) (irc.Type, typeof<Int64>)   -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when Type.(=) (irc.Type, typeof<UInt32>)  -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when Type.(=) (irc.Type, typeof<UInt64>)  -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? Int16   as lstr), (:? Int16   as rstr) when Type.(=) (irc.Type, typeof<Int16>)   -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (irc.Type, typeof<UInt16>)  -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (irc.Type, typeof<int8>)    -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (irc.Type, typeof<uint8>)   -> Expression.Add(inner.Right, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | _ -> e
-                | _, ExpressionType.Constant, _, (:? ConstantExpression as irc) when Type.(=) (irc.Type, ri.Type) ->
-                    match irc.Value, ri.Value with
-                    | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (irc.Type, typeof<decimal>) -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (irc.Type, typeof<float32>) -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? double  as lstr), (:? double  as rstr) when Type.(=) (irc.Type, typeof<double>)  -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? Int32   as lstr), (:? Int32   as rstr) when Type.(=) (irc.Type, typeof<Int32>)   -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? Int64   as lstr), (:? Int64   as rstr) when Type.(=) (irc.Type, typeof<Int64>)   -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when Type.(=) (irc.Type, typeof<UInt32>)  -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when Type.(=) (irc.Type, typeof<UInt64>)  -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? Int16   as lstr), (:? Int16   as rstr) when Type.(=) (irc.Type, typeof<Int16>)   -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (irc.Type, typeof<UInt16>)  -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (irc.Type, typeof<int8>)    -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
-                    | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (irc.Type, typeof<uint8>)   -> Expression.Add(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression
+                // The inner concatenation is kept (its Concat overload takes its left operand) over the joined constant.
+                match inner.Right, ri.Value with
+                | (:? ConstantExpression as irc), (:? string as rstr) when Type.(=) (irc.Type, typeof<string>) ->
+                    match irc.Value with
+                    | :? string as lstr -> inner.Update(inner.Left, inner.Conversion, Expression.Constant(lstr + rstr, typeof<string>)) :> Expression
                     | _ -> e
                 | _ -> e
-            | ExpressionType.Subtract, ExpressionType.Constant, (:? BinaryExpression as inner), (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Subtract ->
-                // ((x - 2) - 2) = x - (2+2) but substarct can only be combined from the right side constants
-                match inner.Right.NodeType, inner.Right with
-                | ExpressionType.Constant, (:? ConstantExpression as irc) when Type.(=) (irc.Type, ri.Type) ->
-                    match irc.Value, ri.Value with
-                    | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (irc.Type, typeof<decimal>) -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (irc.Type, typeof<float32>) -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? double  as lstr), (:? double  as rstr) when Type.(=) (irc.Type, typeof<double>)  -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? float   as lstr), (:? float   as rstr) when Type.(=) (irc.Type, typeof<float>)   -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? Int32   as lstr), (:? Int32   as rstr) when Type.(=) (irc.Type, typeof<Int32>)   -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? Int64   as lstr), (:? Int64   as rstr) when Type.(=) (irc.Type, typeof<Int64>)   -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when Type.(=) (irc.Type, typeof<UInt32>)  -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when Type.(=) (irc.Type, typeof<UInt64>)  -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? Int16   as lstr), (:? Int16   as rstr) when Type.(=) (irc.Type, typeof<Int16>)   -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (irc.Type, typeof<UInt16>)  -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (irc.Type, typeof<int8>)    -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (irc.Type, typeof<uint8>)   -> Expression.Subtract(inner.Left, Expression.Constant(lstr + rstr, irc.Type)) :> Expression 
-                    | _ -> e
-                | _ -> e
-            | ExpressionType.Multiply, ExpressionType.Constant, (:? BinaryExpression as inner), (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Multiply ->
-                // ((x * 2) * 2) = x * 4 and ((2 * x) * 2) = x * 4
-                // Keep the NON-constant operand of the inner multiplication (see Add above).
-                match inner.Left.NodeType, inner.Right.NodeType, inner.Left, inner.Right with
-                | ExpressionType.Constant, rnt, (:? ConstantExpression as irc), _ when rnt <> ExpressionType.Constant && Type.(=) (irc.Type, ri.Type) ->
-                    match irc.Value, ri.Value with
-                    | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (irc.Type, typeof<decimal>) -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (irc.Type, typeof<float32>) -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? double  as lstr), (:? double  as rstr) when Type.(=) (irc.Type, typeof<double>)  -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? Int32   as lstr), (:? Int32   as rstr) when Type.(=) (irc.Type, typeof<Int32>)   -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? Int64   as lstr), (:? Int64   as rstr) when Type.(=) (irc.Type, typeof<Int64>)   -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when Type.(=) (irc.Type, typeof<UInt32>)  -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when Type.(=) (irc.Type, typeof<UInt64>)  -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? Int16   as lstr), (:? Int16   as rstr) when Type.(=) (irc.Type, typeof<Int16>)   -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (irc.Type, typeof<UInt16>)  -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (irc.Type, typeof<int8>)    -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (irc.Type, typeof<uint8>)   -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (irc.Type, typeof<bigint>)  -> Expression.Multiply(inner.Right, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | _ -> e
-                | _, ExpressionType.Constant, _, (:? ConstantExpression as irc) when Type.(=) (irc.Type, ri.Type) ->
-                    match irc.Value, ri.Value with
-                    | (:? decimal as lstr), (:? decimal as rstr) when Type.(=) (irc.Type, typeof<decimal>) -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? float32 as lstr), (:? float32 as rstr) when Type.(=) (irc.Type, typeof<float32>) -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? double  as lstr), (:? double  as rstr) when Type.(=) (irc.Type, typeof<double>)  -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? Int32   as lstr), (:? Int32   as rstr) when Type.(=) (irc.Type, typeof<Int32>)   -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? Int64   as lstr), (:? Int64   as rstr) when Type.(=) (irc.Type, typeof<Int64>)   -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? UInt32  as lstr), (:? UInt32  as rstr) when Type.(=) (irc.Type, typeof<UInt32>)  -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? UInt64  as lstr), (:? UInt64  as rstr) when Type.(=) (irc.Type, typeof<UInt64>)  -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? Int16   as lstr), (:? Int16   as rstr) when Type.(=) (irc.Type, typeof<Int16>)   -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? UInt16  as lstr), (:? UInt16  as rstr) when Type.(=) (irc.Type, typeof<UInt16>)  -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? int8    as lstr), (:? int8    as rstr) when Type.(=) (irc.Type, typeof<int8>)    -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? uint8   as lstr), (:? uint8   as rstr) when Type.(=) (irc.Type, typeof<uint8>)   -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | (:? bigint  as lstr), (:? bigint  as rstr) when Type.(=) (irc.Type, typeof<bigint>)  -> Expression.Multiply(inner.Left, Expression.Constant(lstr * rstr, irc.Type)) :> Expression
-                    | _ -> e
-                | _ -> e
+            | _, _, Regrouped ce merged, _ -> merged
 
-
-            | _, ExpressionType.Constant, le, (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Add || e.NodeType = ExpressionType.AddChecked ||  e.NodeType = ExpressionType.Subtract || e.NodeType = ExpressionType.SubtractChecked ->
-                match ri.Value with // x + 0 = x
-                | (:? decimal as riv) when riv = 0m  -> le
-                | (:? float32 as riv) when riv = 0.f -> le
-                | (:? double  as riv) when riv = 0.  -> le
-                | (:? float   as riv) when riv = 0.  -> le
-                | (:? Int32   as riv) when riv = 0   -> le
-                | (:? Int64   as riv) when riv = 0L  -> le
-                | (:? UInt32  as riv) when riv = 0u  -> le
-                | (:? UInt64  as riv) when riv = 0uL -> le
-                | (:? Int16   as riv) when riv = 0s  -> le
-                | (:? UInt16  as riv) when riv = 0us -> le
-                | (:? int8    as riv) when riv = 0y  -> le
-                | (:? uint8   as riv) when riv = 0uy -> le
-                | (:? bigint  as riv) when riv = 0I -> le
-                | _ -> e
-            | ExpressionType.Constant, _, (:? ConstantExpression as li), re when e.NodeType = ExpressionType.Add || e.NodeType = ExpressionType.AddChecked ->
-                match li.Value with // 0 + x = x (NOT subtraction: 0 - x is -x, not x)
-                | (:? decimal as liv) when liv = 0m  -> re
-                | (:? float32 as liv) when liv = 0.f -> re
-                | (:? double  as liv) when liv = 0.  -> re
-                | (:? float   as liv) when liv = 0.  -> re
-                | (:? Int32   as liv) when liv = 0   -> re
-                | (:? Int64   as liv) when liv = 0L  -> re
-                | (:? UInt32  as liv) when liv = 0u  -> re
-                | (:? UInt64  as liv) when liv = 0uL -> re
-                | (:? Int16   as liv) when liv = 0s  -> re
-                | (:? UInt16  as liv) when liv = 0us -> re
-                | (:? int8    as liv) when liv = 0y  -> re
-                | (:? uint8   as liv) when liv = 0uy -> re
-                | (:? bigint  as liv) when liv = 0I  -> re
-                | _ -> e
-
-            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked ->
-                match ri.Value with
-                // x * 0 = 0 (no float/float32: NaN * 0 is NaN and Infinity * 0 is NaN, not 0)
-                | (:? decimal as riv) when riv = 0m  -> Expression.Constant(riv, ri.Type) :> Expression
-                | (:? Int32   as riv) when riv = 0   -> Expression.Constant(riv, ri.Type) :> Expression
-                | (:? Int64   as riv) when riv = 0L  -> Expression.Constant(riv, ri.Type) :> Expression
-                | (:? UInt32  as riv) when riv = 0u  -> Expression.Constant(riv, ri.Type) :> Expression
-                | (:? UInt64  as riv) when riv = 0uL -> Expression.Constant(riv, ri.Type) :> Expression
-                | (:? Int16   as riv) when riv = 0s  -> Expression.Constant(riv, ri.Type) :> Expression
-                | (:? UInt16  as riv) when riv = 0us -> Expression.Constant(riv, ri.Type) :> Expression
-                | (:? int8    as riv) when riv = 0y  -> Expression.Constant(riv, ri.Type) :> Expression
-                | (:? uint8   as riv) when riv = 0uy -> Expression.Constant(riv, ri.Type) :> Expression
-                | (:? bigint   as riv) when riv = 0I -> Expression.Constant(riv, ri.Type) :> Expression
-                // x * 1 = x
-                | (:? decimal as riv) when riv = 1m  -> ce.Left
-                | (:? float32 as riv) when riv = 1.f -> ce.Left
-                | (:? double  as riv) when riv = 1.  -> ce.Left
-                | (:? float   as riv) when riv = 1.  -> ce.Left
-                | (:? Int32   as riv) when riv = 1   -> ce.Left
-                | (:? Int64   as riv) when riv = 1L  -> ce.Left
-                | (:? UInt32  as riv) when riv = 1u  -> ce.Left
-                | (:? UInt64  as riv) when riv = 1uL -> ce.Left
-                | (:? Int16   as riv) when riv = 1s  -> ce.Left
-                | (:? UInt16  as riv) when riv = 1us -> ce.Left
-                | (:? int8    as riv) when riv = 1y  -> ce.Left
-                | (:? uint8   as riv) when riv = 1uy -> ce.Left
-                | (:? bigint  as riv) when riv = 1I  -> ce.Left
-                | _ -> e
-            | ExpressionType.Constant, _, (:? ConstantExpression as li), _ when e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked ->
-                match li.Value with
-                // 0 * x = 0 (no float/float32: 0 * NaN is NaN and 0 * Infinity is NaN, not 0)
-                | (:? decimal as liv) when liv = 0m  -> Expression.Constant(liv, li.Type) :> Expression
-                | (:? Int32   as liv) when liv = 0   -> Expression.Constant(liv, li.Type) :> Expression
-                | (:? Int64   as liv) when liv = 0L  -> Expression.Constant(liv, li.Type) :> Expression
-                | (:? UInt32  as liv) when liv = 0u  -> Expression.Constant(liv, li.Type) :> Expression
-                | (:? UInt64  as liv) when liv = 0uL -> Expression.Constant(liv, li.Type) :> Expression
-                | (:? Int16   as liv) when liv = 0s  -> Expression.Constant(liv, li.Type) :> Expression
-                | (:? UInt16  as liv) when liv = 0us -> Expression.Constant(liv, li.Type) :> Expression
-                | (:? int8    as liv) when liv = 0y  -> Expression.Constant(liv, li.Type) :> Expression
-                | (:? uint8   as liv) when liv = 0uy -> Expression.Constant(liv, li.Type) :> Expression
-                | (:? bigint  as liv) when liv = 0I  -> Expression.Constant(liv, li.Type) :> Expression
-                // 1 * x = x
-                | (:? decimal as liv) when liv = 1m  -> ce.Right
-                | (:? float32 as liv) when liv = 1.f -> ce.Right
-                | (:? double  as liv) when liv = 1.  -> ce.Right
-                | (:? float   as liv) when liv = 1.  -> ce.Right
-                | (:? Int32   as liv) when liv = 1   -> ce.Right
-                | (:? Int64   as liv) when liv = 1L  -> ce.Right
-                | (:? UInt32  as liv) when liv = 1u  -> ce.Right
-                | (:? UInt64  as liv) when liv = 1uL -> ce.Right
-                | (:? Int16   as liv) when liv = 1s  -> ce.Right
-                | (:? UInt16  as liv) when liv = 1us -> ce.Right
-                | (:? int8    as liv) when liv = 1y  -> ce.Right
-                | (:? uint8   as liv) when liv = 1uy -> ce.Right
-                | (:? bigint  as liv) when liv = 1I  -> ce.Right
-                | _ -> e
-            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when e.NodeType = ExpressionType.Divide ->
-                match ri.Value with // x / 1 = x
-                | (:? decimal as riv) when riv = 1m  -> ce.Left
-                | (:? float32 as riv) when riv = 1.f -> ce.Left
-                | (:? double  as riv) when riv = 1.  -> ce.Left
-                | (:? float   as riv) when riv = 1.  -> ce.Left
-                | (:? Int32   as riv) when riv = 1   -> ce.Left
-                | (:? Int64   as riv) when riv = 1L  -> ce.Left
-                | (:? UInt32  as riv) when riv = 1u  -> ce.Left
-                | (:? UInt64  as riv) when riv = 1uL -> ce.Left
-                | (:? Int16   as riv) when riv = 1s  -> ce.Left
-                | (:? UInt16  as riv) when riv = 1us -> ce.Left
-                | (:? int8    as riv) when riv = 1y  -> ce.Left
-                | (:? uint8   as riv) when riv = 1uy -> ce.Left
-                | (:? bigint  as riv) when riv = 1I  -> ce.Left
-                | _ -> e
+            // x + 0 = x, x - 0 = x
+            | _, ExpressionType.Constant, le, (:? ConstantExpression as ri)
+                when (e.NodeType = ExpressionType.Add || e.NodeType = ExpressionType.AddChecked) && isAdditiveIdentity false ri.Value -> le
+            | _, ExpressionType.Constant, le, (:? ConstantExpression as ri)
+                when (e.NodeType = ExpressionType.Subtract || e.NodeType = ExpressionType.SubtractChecked) && isAdditiveIdentity true ri.Value -> le
+            // 0 + x = x (NOT subtraction: 0 - x is -x, not x)
+            | ExpressionType.Constant, _, (:? ConstantExpression as li), re
+                when (e.NodeType = ExpressionType.Add || e.NodeType = ExpressionType.AddChecked) && isAdditiveIdentity false li.Value -> re
+            // x * 0 = 0, 0 * x = 0 (not Nullable: null * 0 is null)
+            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri)
+                when (e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked) && isExactZero ri.Value && not (isNullableType ri.Type) -> ri :> Expression
+            | ExpressionType.Constant, _, (:? ConstantExpression as li), _
+                when (e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked) && isExactZero li.Value && not (isNullableType li.Type) -> li :> Expression
+            // x * 1 = x, x / 1 = x, 1 * x = x
+            | _, ExpressionType.Constant, le, (:? ConstantExpression as ri)
+                when (e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked || e.NodeType = ExpressionType.Divide) && isMultiplicativeIdentity ri.Value -> le
+            | ExpressionType.Constant, _, (:? ConstantExpression as li), re
+                when (e.NodeType = ExpressionType.Multiply || e.NodeType = ExpressionType.MultiplyChecked) && isMultiplicativeIdentity li.Value -> re
             | _ -> e
         | _ -> e
 
-    /// A string expression that cannot evaluate to null: a non-null constant, or a
-    /// concatenation (String.Concat turns null into "").
+    /// A fold that overflows here (decimal arithmetic is always checked) is left in
+    /// the tree for the run time to throw.
+    let ``evaluate basic constant math`` (e:Expression) =
+        try basicConstantMath e
+        with :? ArithmeticException -> e
+
+    /// A string expression that cannot evaluate to null: a non-null string constant, or
+    /// a concatenation (String.Concat turns null into "").
     let private isNeverNullString (e:Expression) =
+        Type.(=)(e.Type, typeof<string>) &&
         match e.NodeType, e with
         | ExpressionType.Constant, (:? ConstantExpression as ce) -> not (isNull ce.Value)
-        | ExpressionType.Add, _ -> Type.(=)(e.Type, typeof<string>)
+        | ExpressionType.Add, (:? BinaryExpression as be) -> isStringConcat be.Method
         | ExpressionType.Call, (:? MethodCallExpression as mc) -> mc.Method.Name = "Concat" && Type.(=)(mc.Method.DeclaringType, typeof<string>)
         | _ -> false
 
@@ -1296,10 +1376,14 @@ module Methods =
     /// stays null, so `(x + "").Length` would go from 0 to a NullReferenceException.
     let ``simplify string operations`` (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.Add, (:? BinaryExpression as ce) when Type.(=)(ce.Type, typeof<string>) ->
+        | ExpressionType.Add, (:? BinaryExpression as ce) when Type.(=)(ce.Type, typeof<string>) && isStringConcat ce.Method ->
+            let isEmptyString (c:ConstantExpression) =
+                match c.Value with
+                | :? string as s -> s = ""
+                | _ -> false
             match ce.Left.NodeType, ce.Right.NodeType, ce.Left, ce.Right with
-            | ExpressionType.Constant, _, (:? ConstantExpression as le), _ when (le.Value :?> string) = "" && isNeverNullString ce.Right -> ce.Right
-            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when (ri.Value :?> string) = "" && isNeverNullString ce.Left -> ce.Left
+            | ExpressionType.Constant, _, (:? ConstantExpression as le), _ when isEmptyString le && isNeverNullString ce.Right -> ce.Right
+            | _, ExpressionType.Constant, _, (:? ConstantExpression as ri) when isEmptyString ri && isNeverNullString ce.Left -> ce.Left
             | _ -> e
         | _ -> e
 
@@ -1313,12 +1397,12 @@ module Methods =
             // untouched - no value casting, no null-unbox risk, and the bool? result
             // type is preserved.
             match ce.IfTrue, ce.IfFalse with
-            | True', False' -> ce.Test                                  // x ? true : false -> x
-            | False', True' -> Expression.Not(ce.Test) :> Expression    // x ? false : true -> !x
-            // x ? y : y -> y (when both branches are identical)
-            // Cheap NodeType check first; only stringify when the shapes agree.
-            | _ when ce.IfTrue = ce.IfFalse ||
-                     (ce.IfTrue.NodeType = ce.IfFalse.NodeType && ce.IfTrue.ToString() = ce.IfFalse.ToString()) -> ce.IfTrue
+            | True', False' when isBooleanExpr ce.Type -> ce.Test                                  // x ? true : false -> x
+            | False', True' when isBooleanExpr ce.Type -> Expression.Not(ce.Test) :> Expression    // x ? false : true -> !x
+            // x ? y : y -> y (when both branches are the one node, or read the same
+            // parameter, constant or member chain; never by how they print)
+            | _ when Type.(=)(ce.Type, ce.IfTrue.Type)
+                     && (obj.ReferenceEquals(ce.IfTrue, ce.IfFalse) || propertyMatch ce.IfTrue ce.IfFalse) -> ce.IfTrue
             | _ -> e
         | _ -> e
 
@@ -1326,16 +1410,14 @@ module Methods =
     /// x - 0 -> x, x - x -> 0, x % 1 -> 0
     let ``simplify arithmetic identities`` (e:Expression) =
         match e.NodeType, e with
-        | ExpressionType.Subtract, (:? BinaryExpression as ce) ->
+        | ExpressionType.Subtract, (:? BinaryExpression as ce) when isBuiltInOperator ce.Method ce.Left.Type ->
             // Note: x - 0 = x is already handled by ``evaluate basic constant math``.
             match ce.Right.NodeType, ce.Right with
-            // x - x = 0 (when both sides are the same expression)
+            // x - x = 0 (when both sides read the same parameter, constant or member
+            // chain; a call on both sides may give two values)
             // No float/float32: NaN - NaN and Infinity - Infinity are NaN, not 0.
-            // Cheap NodeType check first; only stringify when the shapes agree.
-            | _ when ce.Left = ce.Right ||
-                     (ce.Left.NodeType = ce.Right.NodeType && ce.Left.ToString() = ce.Right.ToString()) ->
+            | _ when propertyMatch ce.Left ce.Right ->
                 match ce.Left.Type with
-                | t when Type.(=)(t, typeof<decimal>) -> Expression.Constant(0m, t) :> Expression
                 | t when Type.(=)(t, typeof<Int32>)   -> Expression.Constant(0, t) :> Expression
                 | t when Type.(=)(t, typeof<Int64>)   -> Expression.Constant(0L, t) :> Expression
                 | t when Type.(=)(t, typeof<UInt32>)  -> Expression.Constant(0u, t) :> Expression
@@ -1345,11 +1427,12 @@ module Methods =
                 | t when Type.(=)(t, typeof<int8>)    -> Expression.Constant(0y, t) :> Expression
                 | t when Type.(=)(t, typeof<uint8>)   -> Expression.Constant(0uy, t) :> Expression
                 | t when Type.(=)(t, typeof<bigint>)  -> Expression.Constant(0I, t) :> Expression
+                | t when Type.(=)(t, typeof<decimal>) -> Expression.Constant(0m, t) :> Expression
                 | _ -> e
             | _ -> e
-        | ExpressionType.Modulo, (:? BinaryExpression as ce) ->
+        | ExpressionType.Modulo, (:? BinaryExpression as ce) when isBuiltInOperator ce.Method ce.Left.Type && not (isNullableType ce.Type) ->
             match ce.Right.NodeType, ce.Right with
-            // x % 1 = 0 (for integer types)
+            // x % 1 = 0 (for integer types; not Nullable: null % 1 is null)
             | ExpressionType.Constant, (:? ConstantExpression as ri) ->
                 match ri.Value with
                 | (:? Int32   as riv) when riv = 1   -> Expression.Constant(0, ce.Type) :> Expression
@@ -1422,11 +1505,47 @@ let private followChain (memo: Dictionary<Expression, Expression>) (exp:Expressi
     memo.[exp] <- last
     last
 
+/// The runtime's own check of the stack: at least 64 KB are left (128 KB in a
+/// 64-bit process; on .NET Framework half of the thread's stack).
+let private runtimeHasStack () =
+#if NETSTANDARD21
+    System.Runtime.CompilerServices.RuntimeHelpers.TryEnsureSufficientExecutionStack()
+#else
+    try
+        System.Runtime.CompilerServices.RuntimeHelpers.EnsureSufficientExecutionStack()
+        true
+    with :? InsufficientExecutionStackException -> false
+#endif
+
+#if DEBUG
+/// The runtime's check passing again from each of `frames` frames of 32 KB further down.
+let rec private hasStackBelow (frames:int) =
+    runtimeHasStack () &&
+    (frames = 0 ||
+     (let pad = Microsoft.FSharp.NativeInterop.NativePtr.stackalloc<byte> 32768
+      Microsoft.FSharp.NativeInterop.NativePtr.write pad 0uy
+      hasStackBelow (frames - 1)))
+#endif
+
+/// Whether the stack has room for one more level of the visit and the rules it runs.
+/// The rules of an optimized build run in about 60 KB (64-bit), within what the
+/// runtime's check leaves. A debug build has far larger frames (about 160 KB for
+/// the rules), so there the check has to pass from 96 KB further down as well.
+let private hasStackForVisit () =
+#if DEBUG
+    hasStackBelow 3
+#else
+    runtimeHasStack ()
+#endif
+
 /// The memo of one run, keyed by reference: a node at its fixed point maps to
 /// itself and a node a rule rewrote to that rewrite. A node a rule changed is
 /// visited again for the children the rule built, and a subtree shared by
 /// several parents (the same instance at many places) is reduced once, so
 /// neither walks the reduced nodes again.
+/// The visit recurses once per nesting level: a node nested deeper than the stack
+/// has room for is left as it is (and out of the memo), so a very deep tree comes
+/// back optimized down to that depth instead of overflowing the stack.
 [<TailCall>]
 let rec internal visitWith (memo: Dictionary<Expression, Expression>) (exp:Expression): Expression =
     //bottom up:
@@ -1434,6 +1553,7 @@ let rec internal visitWith (memo: Dictionary<Expression, Expression>) (exp:Expre
     let known, next = memo.TryGetValue exp
     if known then
         if obj.ReferenceEquals(next, exp) then exp else followChain memo exp next
+    elif not (hasStackForVisit ()) then exp
     else
     let visited = visitchilds memo exp
     let reduced = doReduction visited
@@ -1474,9 +1594,13 @@ and internal visitchilds (memo: Dictionary<Expression, Expression>) (e:Expressio
     | ExpressionType.TypeIs, (:? TypeBinaryExpression as e)  -> 
         let v = visitWith memo e.Expression
         if v=e.Expression then upcast e else upcast Expression.TypeIs(v, e.TypeOperand)
+    | ExpressionType.TypeEqual, (:? TypeBinaryExpression as e)  ->
+        let v = visitWith memo e.Expression
+        if v=e.Expression then upcast e else upcast Expression.TypeEqual(v, e.TypeOperand)
     | ExpressionType.Conditional, (:? ConditionalExpression as e) -> 
         let v1, v2, v3 = visitWith memo e.Test, visitWith memo e.IfTrue, visitWith memo e.IfFalse
-        if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3)
+        // rebuilt with its own type: the branches of a typed conditional (IfThenElse, a common base type) differ in type
+        if v1=e.Test && v2=e.IfTrue && v3=e.IfFalse then upcast e else upcast Expression.Condition(v1, v2, v3, e.Type)
     | ExpressionType.New, (:? NewExpression as e) ->
         if isNull e.Constructor then
             // Value types created via their implicit parameterless constructor
@@ -1524,10 +1648,11 @@ and internal visitchilds (memo: Dictionary<Expression, Expression>) (e:Expressio
             if v1=e.Left && v2=e.Right && v3=(e.Conversion:>Expression) then upcast e else upcast Expression.Coalesce(v1, v2, v3 :?> LambdaExpression)
     | nt, (:? BinaryExpression as e)      -> 
             let v1, v2 = visitWith memo e.Left, visitWith memo e.Right
-            if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(nt,v1,v2,e.IsLiftedToNull, e.Method)
+            if v1=e.Left && v2=e.Right then upcast e else upcast Expression.MakeBinary(nt,v1,v2,e.IsLiftedToNull, e.Method, e.Conversion)
     | ExpressionType.Block, (:? BlockExpression as e) -> visitBlock memo e
-    | nt, _ -> if (int nt = 52) then e // Expression.Extension
-               else failwith ("encountered unknown LINQ expression: " + e.NodeType.ToString() + " " + e.ToString())
+    // Any other node (Default, Index, Switch, Try, Loop, Goto, Label, Dynamic,
+    // Extension, ...) is valid and stays as it is, its children unvisited.
+    | _ -> e
 
 /// Out of visitchilds: its try/with would grow the frame of every nesting level.
 and private visitBlock (memo: Dictionary<Expression, Expression>) (e:BlockExpression): Expression =
@@ -1538,7 +1663,7 @@ and private visitBlock (memo: Dictionary<Expression, Expression>) (e:BlockExpres
     let exprs = e.Expressions |> Seq.toArray
     let visited = exprs |> Array.map (visitWith memo)
     if vars = transformedVariables && exprs = visited then upcast e
-    else upcast Expression.Block(transformedVariables, visited)
+    else upcast Expression.Block(e.Type, transformedVariables, visited)
 
 // Look also inside a LINQ-wrapper
 // https://referencesource.microsoft.com/#System.Core/System/Linq/Enumerable.cs,8bf16962931637d3,references
@@ -1557,15 +1682,17 @@ and internal ``WhereSelectEnumerableIterator visitor`` (memo: Dictionary<Express
     let src = srcProp.GetValue enu
     if isNull src then ce
     else
+    // Only a source that is itself a query holds an expression: a list or an array does not.
     let exprItm = cachedField (src.GetType()) "expression"
-    let expr = exprItm.GetValue src
-    if isNull expr then ce
+    if isNull exprItm then ce
     else
-    let exp = expr :?> Expression
-    let opt = visitWith memo exp
-    if opt <> exp then
-        exprItm.SetValue(src, (box opt))
-    ce
+    match exprItm.GetValue src with
+    | :? Expression as exp ->
+        let opt = visitWith memo exp
+        if opt <> exp then
+            exprItm.SetValue(src, (box opt))
+        ce
+    | _ -> ce
 
 /// One optimizer run over a tree, with its own memo of reduced nodes.
 let internal visit' (exp:Expression): Expression =

@@ -1,6 +1,7 @@
 /// Random expression trees for the optimizer properties: booleans, integers,
-/// doubles (NaN included), nullable integers and strings over ten
-/// parameters, with the shapes every reduction rule is written for. A tree
+/// doubles (NaN included), decimals, nullable integers, strings and an object
+/// that may be null over fifteen parameters (two of them named alike, two
+/// unnamed), with the shapes every reduction rule is written for. A tree
 /// is built into a System.Linq.Expressions tree and compiled against a
 /// random environment, so the compiled original is the oracle for the
 /// compiled optimized tree.
@@ -25,7 +26,7 @@ type Cmp =
     | Ne
 
 type BExpr =
-    /// p or q
+    /// p, q or an unnamed parameter
     | BVar of int
     | BConst of bool
     | Not of BExpr
@@ -41,13 +42,18 @@ type BExpr =
     | DCmp of c: Cmp * a: DExpr * b: DExpr
     /// lifted comparison of nullable ints: null compares false
     | NCmp of c: Cmp * a: NExpr * b: NExpr
+    | MCmp of c: Cmp * a: MExpr * b: MExpr
+    /// o.Flag, o == null and o != null over an object that may be null
+    | OFlag
+    | OIsNull
+    | ONotNull
     | SEq of a: SExpr * b: SExpr
     | SEmpty of SExpr
     | NHasValue of NExpr
     | BIf of c: BExpr * a: BExpr * b: BExpr
 
 and IExpr =
-    /// x, y or z
+    /// x, y, z, a second parameter named x or an unnamed one
     | IVar of int
     | IConst of int
     | Add of a: IExpr * b: IExpr
@@ -62,12 +68,16 @@ and IExpr =
     | SLen of SExpr
     | NCoalesce of a: NExpr * b: IExpr
     | NValue of NExpr
+    /// o.Value: throws when o is null
+    | OValue
 
 and DExpr =
     | DVar
     | DConst of float
     | DAdd of a: DExpr * b: DExpr
+    | DSub of a: DExpr * b: DExpr
     | DMul of a: DExpr * b: DExpr
+    | DDiv of a: DExpr * b: DExpr
     | DIf of c: BExpr * a: DExpr * b: DExpr
 
 and NExpr =
@@ -75,7 +85,19 @@ and NExpr =
     | NVar of int
     | NConst of int option
     | NAdd of a: NExpr * b: NExpr
+    | NSub of a: NExpr * b: NExpr
+    | NMul of a: NExpr * b: NExpr
+    | NMod of a: NExpr * b: NExpr
     | NIf of c: BExpr * a: NExpr * b: NExpr
+
+and MExpr =
+    | MVar
+    | MConst of decimal
+    | MAdd of a: MExpr * b: MExpr
+    | MSub of a: MExpr * b: MExpr
+    | MMul of a: MExpr * b: MExpr
+    | MDiv of a: MExpr * b: MExpr
+    | MIf of c: BExpr * a: MExpr * b: MExpr
 
 and SExpr =
     /// s or t
@@ -83,6 +105,13 @@ and SExpr =
     | SConst of string
     | SConcat of a: SExpr * b: SExpr
     | SIf of c: BExpr * a: SExpr * b: SExpr
+
+/// The object a Captured field reads from, and the one the parameter o holds
+/// (or null).
+[<AllowNullLiteral>]
+type Holder(value: int) =
+    member val Value = value with get, set
+    member _.Flag = value > 0
 
 /// What the parameters hold when a tree is evaluated.
 type Env =
@@ -95,11 +124,14 @@ type Env =
       T: string
       NX: Nullable<int>
       NY: Nullable<int>
-      D: float }
-
-/// The object a Captured field reads from.
-type Holder(value: int) =
-    member val Value = value with get, set
+      D: float
+      /// the second parameter named x
+      X2: int
+      /// the unnamed int and bool parameters
+      U: int
+      V: bool
+      M: decimal
+      O: Holder }
 
 // ============================================================================
 // Building the System.Linq.Expressions tree
@@ -115,8 +147,14 @@ let pt = Expression.Parameter(typeof<string>, "t")
 let pnx = Expression.Parameter(typeof<Nullable<int>>, "nx")
 let pny = Expression.Parameter(typeof<Nullable<int>>, "ny")
 let pd = Expression.Parameter(typeof<float>, "d")
+/// Another parameter named x: the same operand as px by name, not by reference.
+let px2 = Expression.Parameter(typeof<int>, "x")
+let pu = Expression.Parameter typeof<int>
+let pv = Expression.Parameter typeof<bool>
+let pm = Expression.Parameter(typeof<decimal>, "m")
+let po = Expression.Parameter(typeof<Holder>, "o")
 
-let parameters = [| px; py; pz; pp; pq; ps; pt; pnx; pny; pd |]
+let parameters = [| px; py; pz; pp; pq; ps; pt; pnx; pny; pd; px2; pu; pv; pm; po |]
 
 let private cmp (c: Cmp) (l: Expression) (r: Expression) : Expression =
     match c with
@@ -132,11 +170,14 @@ let private isNullOrEmptyMethod = typeof<string>.GetMethod("IsNullOrEmpty", [| t
 let private stringEqualsMethod = typeof<string>.GetMethod("op_Equality", [| typeof<string>; typeof<string> |])
 let private lengthProperty = typeof<string>.GetProperty "Length"
 let private valueProperty = typeof<Holder>.GetProperty "Value"
+let private flagProperty = typeof<Holder>.GetProperty "Flag"
+let private noHolder = Expression.Constant(null, typeof<Holder>)
 
 let rec buildB (e: BExpr) : Expression =
     match e with
     | BVar 0 -> pp
-    | BVar _ -> pq
+    | BVar 1 -> pq
+    | BVar _ -> pv
     | BConst b -> Expression.Constant(b, typeof<bool>)
     | Not a -> Expression.Not(buildB a)
     | AndAlso (a, b) -> Expression.AndAlso(buildB a, buildB b)
@@ -149,6 +190,10 @@ let rec buildB (e: BExpr) : Expression =
     | ICmp (c, a, b) -> cmp c (buildI a) (buildI b)
     | DCmp (c, a, b) -> cmp c (buildD a) (buildD b)
     | NCmp (c, a, b) -> cmp c (buildN a) (buildN b)
+    | MCmp (c, a, b) -> cmp c (buildM a) (buildM b)
+    | OFlag -> Expression.Property(po, flagProperty)
+    | OIsNull -> Expression.Equal(po, noHolder)
+    | ONotNull -> Expression.NotEqual(po, noHolder)
     | SEq (a, b) -> Expression.Equal(buildS a, buildS b, false, stringEqualsMethod)
     | SEmpty a -> Expression.Call(isNullOrEmptyMethod, buildS a)
     | NHasValue a -> Expression.Property(buildN a, "HasValue")
@@ -158,7 +203,9 @@ and buildI (e: IExpr) : Expression =
     match e with
     | IVar 0 -> px
     | IVar 1 -> py
-    | IVar _ -> pz
+    | IVar 2 -> pz
+    | IVar 3 -> px2
+    | IVar _ -> pu
     | IConst n -> Expression.Constant(n, typeof<int>)
     | Add (a, b) -> Expression.Add(buildI a, buildI b)
     | Sub (a, b) -> Expression.Subtract(buildI a, buildI b)
@@ -171,13 +218,16 @@ and buildI (e: IExpr) : Expression =
     | SLen a -> Expression.Property(buildS a, lengthProperty)
     | NCoalesce (a, b) -> Expression.Coalesce(buildN a, buildI b)
     | NValue a -> Expression.Property(buildN a, "Value")
+    | OValue -> Expression.Property(po, valueProperty)
 
 and buildD (e: DExpr) : Expression =
     match e with
     | DVar -> pd
     | DConst f -> Expression.Constant(f, typeof<float>)
     | DAdd (a, b) -> Expression.Add(buildD a, buildD b)
+    | DSub (a, b) -> Expression.Subtract(buildD a, buildD b)
     | DMul (a, b) -> Expression.Multiply(buildD a, buildD b)
+    | DDiv (a, b) -> Expression.Divide(buildD a, buildD b)
     | DIf (c, a, b) -> Expression.Condition(buildB c, buildD a, buildD b)
 
 and buildN (e: NExpr) : Expression =
@@ -187,7 +237,20 @@ and buildN (e: NExpr) : Expression =
     | NConst (Some n) -> Expression.Constant(Nullable n, typeof<Nullable<int>>)
     | NConst None -> Expression.Constant(null, typeof<Nullable<int>>)
     | NAdd (a, b) -> Expression.Add(buildN a, buildN b)
+    | NSub (a, b) -> Expression.Subtract(buildN a, buildN b)
+    | NMul (a, b) -> Expression.Multiply(buildN a, buildN b)
+    | NMod (a, b) -> Expression.Modulo(buildN a, buildN b)
     | NIf (c, a, b) -> Expression.Condition(buildB c, buildN a, buildN b)
+
+and buildM (e: MExpr) : Expression =
+    match e with
+    | MVar -> pm
+    | MConst m -> Expression.Constant(m, typeof<decimal>)
+    | MAdd (a, b) -> Expression.Add(buildM a, buildM b)
+    | MSub (a, b) -> Expression.Subtract(buildM a, buildM b)
+    | MMul (a, b) -> Expression.Multiply(buildM a, buildM b)
+    | MDiv (a, b) -> Expression.Divide(buildM a, buildM b)
+    | MIf (c, a, b) -> Expression.Condition(buildB c, buildM a, buildM b)
 
 and buildS (e: SExpr) : Expression =
     match e with
@@ -204,6 +267,7 @@ type Tree =
     | TD of DExpr
     | TN of NExpr
     | TS of SExpr
+    | TM of MExpr
 
 let build (tree: Tree) : Expression =
     match tree with
@@ -212,6 +276,7 @@ let build (tree: Tree) : Expression =
     | TD e -> buildD e
     | TN e -> buildN e
     | TS e -> buildS e
+    | TM e -> buildM e
 
 // ============================================================================
 // Evaluation
@@ -226,10 +291,12 @@ let private describe (o: obj) =
     match o with
     | null -> "null"
     | :? float as f -> f.ToString "R"
+    // a decimal is the same by value, whatever its scale: 6.00 is 6
+    | :? decimal as d -> d.ToString("G29", System.Globalization.CultureInfo.InvariantCulture)
     | :? string as s -> $"\"{s}\""
     | o -> o.ToString()
 
-/// Compile a body over all ten parameters. Compiling can fail on its own
+/// Compile a body over all the parameters. Compiling can fail on its own
 /// (a tree the optimizer left referring to a parameter it no longer binds,
 /// for one), so the compiled function is returned as a Result.
 let compile (body: Expression) : Result<obj[] -> Outcome, string> =
@@ -245,7 +312,8 @@ let compile (body: Expression) : Result<obj[] -> Outcome, string> =
     with e -> Error(e.GetType().Name + ": " + e.Message)
 
 let args (env: Env) : obj[] =
-    [| box env.X; box env.Y; box env.Z; box env.P; box env.Q; box env.S; box env.T; box env.NX; box env.NY; box env.D |]
+    [| box env.X; box env.Y; box env.Z; box env.P; box env.Q; box env.S; box env.T; box env.NX; box env.NY; box env.D
+       box env.X2; box env.U; box env.V; box env.M; box env.O |]
 
 // ============================================================================
 // Generation
@@ -259,15 +327,25 @@ let private genDoubleConst =
     Gen.frequency
         [ 3, Gen.elements [ 0.0; 1.0; -1.0; 2.5; -0.0 ]
           2, Gen.elements [ Double.NaN; Double.PositiveInfinity; Double.NegativeInfinity ]
+          // constants whose sums and products round or overflow
+          2, Gen.elements [ 0.1; 0.2; 10.0; 1e16; 1e308 ]
           1, Gen.choose (-1000, 1000) |> Gen.map (fun n -> float n / 4.0) ]
+
+/// Zeros and ones of several scales, and the ends of the range (their sums overflow).
+let private genDecimalConst =
+    Gen.frequency
+        [ 4, Gen.elements [ 0m; 1m; -1m; 0.00m; 1.0m; 1.50m; 2m ]
+          1, Gen.elements [ Decimal.MaxValue; Decimal.MinValue ]
+          1, Gen.choose (-1000, 1000) |> Gen.map (fun n -> decimal n / 8m) ]
 
 let private genStringConst = Gen.elements [ ""; "a"; "ab"; "b"; " "; null ]
 
 let rec genB (depth: int) : Gen<BExpr> =
     let leaf =
         Gen.frequency
-            [ 4, Gen.choose (0, 1) |> Gen.map BVar
-              2, Gen.elements [ BConst true; BConst false ] ]
+            [ 4, Gen.choose (0, 2) |> Gen.map BVar
+              2, Gen.elements [ BConst true; BConst false ]
+              2, Gen.elements [ OFlag; OIsNull; ONotNull ] ]
     if depth <= 0 then
         leaf
     else
@@ -276,6 +354,7 @@ let rec genB (depth: int) : Gen<BExpr> =
         let d = genD (depth - 1)
         let n = genN (depth - 1)
         let s = genS (depth - 1)
+        let m = genM (depth - 1)
         Gen.frequency
             [ 3, leaf
               3, Gen.map Not b
@@ -289,6 +368,7 @@ let rec genB (depth: int) : Gen<BExpr> =
               4, Gen.zip3 genCmp i i |> Gen.map ICmp
               2, Gen.zip3 genCmp d d |> Gen.map DCmp
               2, Gen.zip3 genCmp n n |> Gen.map NCmp
+              1, Gen.zip3 genCmp m m |> Gen.map MCmp
               1, Gen.zip s s |> Gen.map SEq
               1, Gen.map SEmpty s
               1, Gen.map NHasValue n
@@ -298,9 +378,10 @@ let rec genB (depth: int) : Gen<BExpr> =
 and genI (depth: int) : Gen<IExpr> =
     let leaf =
         Gen.frequency
-            [ 4, Gen.choose (0, 2) |> Gen.map IVar
+            [ 5, Gen.choose (0, 4) |> Gen.map IVar
               3, Gen.map IConst genIntConst
-              1, Gen.map Captured genIntConst ]
+              1, Gen.map Captured genIntConst
+              1, Gen.constant OValue ]
     if depth <= 0 then
         leaf
     else
@@ -331,7 +412,9 @@ and genD (depth: int) : Gen<DExpr> =
         Gen.frequency
             [ 4, leaf
               2, Gen.zip d d |> Gen.map DAdd
+              1, Gen.zip d d |> Gen.map DSub
               2, Gen.zip d d |> Gen.map DMul
+              1, Gen.zip d d |> Gen.map DDiv
               1, Gen.zip3 b d d |> Gen.map DIf ]
 
 and genN (depth: int) : Gen<NExpr> =
@@ -345,7 +428,44 @@ and genN (depth: int) : Gen<NExpr> =
     else
         let b = genB (depth - 1)
         let n = genN (depth - 1)
-        Gen.frequency [ 4, leaf; 2, Gen.zip n n |> Gen.map NAdd; 1, Gen.zip3 b n n |> Gen.map NIf ]
+        Gen.frequency
+            [ 4, leaf
+              2, Gen.zip n n |> Gen.map NAdd
+              1, Gen.zip n n |> Gen.map NSub
+              2, Gen.zip n n |> Gen.map NMul
+              1, Gen.zip n n |> Gen.map NMod
+              1, Gen.zip3 b n n |> Gen.map NIf ]
+
+and genM (depth: int) : Gen<MExpr> =
+    let leaf = Gen.frequency [ 3, Gen.constant MVar; 3, Gen.map MConst genDecimalConst ]
+    if depth <= 0 then
+        leaf
+    else
+        let b = genB (depth - 1)
+        let m = genM (depth - 1)
+        Gen.frequency
+            [ 4, leaf
+              2, Gen.zip m m |> Gen.map MAdd
+              2, Gen.zip m m |> Gen.map MSub
+              2, Gen.zip m m |> Gen.map MMul
+              1, Gen.zip m m |> Gen.map MDiv
+              1, Gen.zip3 b m m |> Gen.map MIf
+              // the identities and folds, over zeros and ones of several scales
+              3, gen {
+                    let! zero = Gen.elements [ 0m; 0.00m ]
+                    let! one = Gen.elements [ 1m; 1.0m; 1.00m ]
+                    let! k1 = genDecimalConst
+                    let! k2 = genDecimalConst
+                    let! x = m
+                    return!
+                        Gen.elements
+                            [ MAdd (x, MConst zero); MAdd (MConst zero, x); MSub (x, MConst zero)
+                              MMul (x, MConst zero); MMul (MConst zero, x)
+                              MMul (x, MConst one); MMul (MConst one, x); MDiv (x, MConst one)
+                              MSub (MVar, MVar)
+                              MAdd (MConst k1, MConst k2); MSub (MConst k1, MConst k2)
+                              MMul (MConst k1, MConst k2); MDiv (MConst k1, MConst k2) ]
+                 } ]
 
 and genS (depth: int) : Gen<SExpr> =
     let leaf = Gen.frequency [ 3, Gen.choose (0, 1) |> Gen.map SVar; 2, Gen.map SConst genStringConst ]
@@ -367,11 +487,67 @@ and genS (depth: int) : Gen<SExpr> =
 /// seldom hit because they need the same subtree twice: idempotence and
 /// complement (a and a, a or not a), gathering and complement
 /// distribution ((a or b) and (a or c), (a and b) or (a and not b)),
-/// comparison ranges on one variable (x > 1 and x > 2), duplicated and
-/// mutually exclusive comparisons, and long and/or chains for balancing.
+/// comparison ranges on one variable (x > 1 and x > 2, also over a double
+/// with NaN limits and over nullables), duplicated and mutually exclusive
+/// comparisons, the same shapes over two parameters that only share a name,
+/// reads of an object behind its null guard, and and/or chains of 8 to 40
+/// operands for balancing.
 and genShaped (depth: int) : Gen<BExpr> =
     let b = genB (max 0 depth)
-    let variable = Gen.choose (0, 2) |> Gen.map IVar
+    let variable = Gen.choose (0, 4) |> Gen.map IVar
+    let join = Gen.elements [ AndAlso; OrElse ]
+    let doubleRange =
+        gen {
+            let! op1 = genCmp
+            let! op2 = genCmp
+            let! k1 = genDoubleConst
+            let! k2 = genDoubleConst
+            let! join = join
+            return join (DCmp (op1, DVar, DConst k1), DCmp (op2, DVar, DConst k2))
+        }
+    let nullableRange =
+        gen {
+            let! op1 = genCmp
+            let! op2 = genCmp
+            let limit = Gen.frequency [ 3, Gen.map (Some >> NConst) genIntConst; 1, Gen.constant (NConst None); 2, Gen.constant (NVar 1) ]
+            let! k1 = limit
+            let! k2 = limit
+            let! join = join
+            return join (NCmp (op1, NVar 0, k1), NCmp (op2, NVar 0, k2))
+        }
+    /// x and the other parameter named x (or the unnamed one) where a rule wants one operand twice
+    let namesakes =
+        gen {
+            let! other = Gen.elements [ IVar 3; IVar 4 ]
+            let! op1 = genCmp
+            let! op2 = genCmp
+            let! k1 = genIntConst
+            let! k2 = genIntConst
+            let! join = join
+            return!
+                Gen.elements
+                    [ ICmp (op1, IVar 0, other)
+                      ICmp (op1, Sub (IVar 0, other), IConst k1)
+                      join (ICmp (op1, IVar 0, IConst k1), ICmp (op2, other, IConst k2))
+                      join (ICmp (op1, IVar 0, IConst k1), ICmp (op1, other, IConst k1)) ]
+        }
+    /// o.Flag and o.Value read behind o != null (or after o == null), in the shapes the rules regroup
+    let guarded =
+        gen {
+            let! x = b
+            let read = ICmp (Gt, OValue, IConst 0)
+            return!
+                Gen.elements
+                    [ AndAlso (AndAlso (ONotNull, OrElse (OFlag, x)), OFlag)
+                      AndAlso (AndAlso (OrElse (x, OFlag), ONotNull), OFlag)
+                      OrElse (AndAlso (x, OFlag), OrElse (OIsNull, OFlag))
+                      OrElse (OrElse (AndAlso (x, OFlag), OIsNull), OFlag)
+                      OrElse (Not (OrElse (x, ONotNull)), OrElse (x, read))
+                      OrElse (OrElse (Not x, OIsNull), AndAlso (read, Not OIsNull))
+                      OrElse (Not (OrElse (x, OIsNull)), AndAlso (Not OIsNull, read))
+                      AndAlso (ONotNull, OrElse (x, AndAlso (OFlag, read)))
+                      OrElse (OIsNull, AndAlso (OFlag, x)) ]
+        }
     let range =
         gen {
             let! v = variable
@@ -379,21 +555,26 @@ and genShaped (depth: int) : Gen<BExpr> =
             let! op2 = genCmp
             let! k1 = genIntConst
             let! k2 = genIntConst
-            let! join = Gen.elements [ AndAlso; OrElse ]
+            let! join = join
             return join (ICmp (op1, v, IConst k1), ICmp (op2, v, IConst k2))
         }
     let exclusive =
         gen {
             let! v = variable
             let! k = genIntConst
-            let! op1, op2 = Gen.elements [ Eq, Ne; Ne, Eq; Lt, Ge; Gt, Le; Ge, Lt; Le, Gt ]
-            let! join = Gen.elements [ AndAlso; OrElse ]
-            return join (ICmp (op1, v, IConst k), ICmp (op2, v, IConst k))
+            let! op1, op2 = Gen.elements [ Eq, Ne; Ne, Eq; Lt, Ge; Gt, Le; Ge, Lt; Le, Gt; Ge, Le ]
+            let! join = join
+            return!
+                Gen.elements
+                    [ join (ICmp (op1, v, IConst k), ICmp (op2, v, IConst k))
+                      join (NCmp (op1, NVar 0, NVar 1), NCmp (op2, NVar 0, NVar 1))
+                      join (DCmp (op1, DVar, DConst (float k)), DCmp (op2, DVar, DConst (float k))) ]
         }
     let chain =
         gen {
-            let! leaves = Gen.listOfLength 8 (genB 0)
-            let! join = Gen.elements [ AndAlso; OrElse ]
+            let! length = Gen.choose (8, 40)
+            let! leaves = Gen.listOfLength length (genB 0)
+            let! join = join
             let! rightNested = Gen.elements [ true; false ]
             return
                 if rightNested then leaves |> List.reduceBack (fun l r -> join (l, r))
@@ -413,8 +594,20 @@ and genShaped (depth: int) : Gen<BExpr> =
           2, Gen.zip b b |> Gen.map (fun (a, x) -> AndAlso (a, Not (AndAlso (a, x))))
           2, Gen.zip b b |> Gen.map (fun (a, x) -> AndAlso (AndAlso (a, x), Not a))
           2, Gen.zip b b |> Gen.map (fun (a, x) -> OrElse (Not (OrElse (x, a)), a))
+          // an operand absorbed two links down, on either side
+          2, Gen.zip3 (genB 0) b b |> Gen.map (fun (a, x, y) -> AndAlso (a, AndAlso (x, OrElse (a, y))))
+          2, Gen.zip3 (genB 0) b b |> Gen.map (fun (a, x, y) -> OrElse (OrElse (x, AndAlso (y, a)), a))
+          // a complement pair factored out of one operand
+          2, Gen.zip (genB 0) (genB 0) |> Gen.map (fun (a, x) -> OrElse (AndAlso (a, x), AndAlso (Not a, x)))
+          // an operand beside its complement one link down
+          2, Gen.zip (genB 0) b |> Gen.map (fun (a, x) -> AndAlso (a, OrElse (Not a, x)))
+          2, Gen.zip (genB 0) b |> Gen.map (fun (a, x) -> OrElse (AndAlso (x, Not a), a))
           4, range
+          2, doubleRange
+          2, nullableRange
           3, exclusive
+          2, namesakes
+          4, guarded
           2, chain ]
 let genTree : Gen<Tree> =
     Gen.sized (fun size ->
@@ -424,7 +617,8 @@ let genTree : Gen<Tree> =
               4, Gen.map TI (genI depth)
               1, Gen.map TD (genD depth)
               1, Gen.map TN (genN depth)
-              1, Gen.map TS (genS depth) ])
+              1, Gen.map TS (genS depth)
+              1, Gen.map TM (genM depth) ])
 
 // ============================================================================
 // Shrinking: a node shrinks to any of its children of the same type
@@ -435,6 +629,7 @@ let rec shrinkB (e: BExpr) : seq<BExpr> =
         match e with
         | BVar _ -> ()
         | BConst _ -> ()
+        | OFlag | OIsNull | ONotNull -> ()
         | Not a -> yield a; yield! shrinkB a |> Seq.map Not
         | AndAlso (a, b) -> yield a; yield b; yield! shrinkB a |> Seq.map (fun a' -> AndAlso (a', b)); yield! shrinkB b |> Seq.map (fun b' -> AndAlso (a, b'))
         | OrElse (a, b) -> yield a; yield b; yield! shrinkB a |> Seq.map (fun a' -> OrElse (a', b)); yield! shrinkB b |> Seq.map (fun b' -> OrElse (a, b'))
@@ -442,6 +637,7 @@ let rec shrinkB (e: BExpr) : seq<BExpr> =
         | ICmp (c, a, b) -> yield! shrinkI a |> Seq.map (fun a' -> ICmp (c, a', b)); yield! shrinkI b |> Seq.map (fun b' -> ICmp (c, a, b'))
         | DCmp (c, a, b) -> yield! shrinkD a |> Seq.map (fun a' -> DCmp (c, a', b)); yield! shrinkD b |> Seq.map (fun b' -> DCmp (c, a, b'))
         | NCmp (c, a, b) -> yield! shrinkN a |> Seq.map (fun a' -> NCmp (c, a', b)); yield! shrinkN b |> Seq.map (fun b' -> NCmp (c, a, b'))
+        | MCmp (c, a, b) -> yield! shrinkM a |> Seq.map (fun a' -> MCmp (c, a', b)); yield! shrinkM b |> Seq.map (fun b' -> MCmp (c, a, b'))
         | SEq (a, b) -> yield! shrinkS a |> Seq.map (fun a' -> SEq (a', b)); yield! shrinkS b |> Seq.map (fun b' -> SEq (a, b'))
         | SEmpty a -> yield! shrinkS a |> Seq.map SEmpty
         | NHasValue a -> yield! shrinkN a |> Seq.map NHasValue
@@ -451,7 +647,7 @@ let rec shrinkB (e: BExpr) : seq<BExpr> =
 and shrinkI (e: IExpr) : seq<IExpr> =
     seq {
         match e with
-        | IVar _ | IConst _ | Captured _ -> ()
+        | IVar _ | IConst _ | Captured _ | OValue -> ()
         | Add (a, b) | Sub (a, b) | Mul (a, b) | Div (a, b) | Mod (a, b) ->
             yield a
             yield b
@@ -475,7 +671,7 @@ and shrinkD (e: DExpr) : seq<DExpr> =
     seq {
         match e with
         | DVar | DConst _ -> ()
-        | DAdd (a, b) | DMul (a, b) -> yield a; yield b
+        | DAdd (a, b) | DSub (a, b) | DMul (a, b) | DDiv (a, b) -> yield a; yield b
         | DIf (c, a, b) -> yield a; yield b; yield! shrinkB c |> Seq.map (fun c' -> DIf (c', a, b))
     }
 
@@ -483,8 +679,16 @@ and shrinkN (e: NExpr) : seq<NExpr> =
     seq {
         match e with
         | NVar _ | NConst _ -> ()
-        | NAdd (a, b) -> yield a; yield b
+        | NAdd (a, b) | NSub (a, b) | NMul (a, b) | NMod (a, b) -> yield a; yield b
         | NIf (c, a, b) -> yield a; yield b; yield! shrinkB c |> Seq.map (fun c' -> NIf (c', a, b))
+    }
+
+and shrinkM (e: MExpr) : seq<MExpr> =
+    seq {
+        match e with
+        | MVar | MConst _ -> ()
+        | MAdd (a, b) | MSub (a, b) | MMul (a, b) | MDiv (a, b) -> yield a; yield b
+        | MIf (c, a, b) -> yield a; yield b; yield! shrinkB c |> Seq.map (fun c' -> MIf (c', a, b))
     }
 
 and shrinkS (e: SExpr) : seq<SExpr> =
@@ -502,6 +706,7 @@ let shrinkTree (tree: Tree) : seq<Tree> =
     | TD e -> shrinkD e |> Seq.map TD
     | TN e -> shrinkN e |> Seq.map TN
     | TS e -> shrinkS e |> Seq.map TS
+    | TM e -> shrinkM e |> Seq.map TM
 
 let arbTree : Arbitrary<Tree> = Arb.fromGenShrink (genTree, shrinkTree)
 
@@ -523,7 +728,12 @@ let genEnv : Gen<Env> =
         let! nx = genNullable
         let! ny = genNullable
         let! d = genDoubleConst
-        return { X = x; Y = y; Z = z; P = p; Q = q; S = s; T = t; NX = nx; NY = ny; D = d }
+        let! x2 = genIntConst
+        let! u = genIntConst
+        let! v = Gen.elements [ true; false ]
+        let! m = genDecimalConst
+        let! o = Gen.elements [ null; Holder 1; Holder 0 ]
+        return { X = x; Y = y; Z = z; P = p; Q = q; S = s; T = t; NX = nx; NY = ny; D = d; X2 = x2; U = u; V = v; M = m; O = o }
     }
 
 /// A fixed grid of environments every tree is checked on, so a failure is
@@ -532,8 +742,10 @@ let envs : Env list =
     let ints = [ 0; 1; -1; 2; Int32.MaxValue ]
     let strings = [ ""; "a"; null ]
     let nullables = [ Nullable<int>(); Nullable 0; Nullable 1 ]
-    let doubles = [ 0.0; 1.0; Double.NaN ]
-    [ for i in 0 .. 47 ->
+    let doubles = [ 0.0; 1.0; Double.NaN; -0.0; 1e16; 1e308 ]
+    let decimals = [ 0m; 1.50m; -1m; Decimal.MaxValue ]
+    let holders = [ null; Holder 1; Holder 0 ]
+    [ for i in 0 .. 71 ->
           { X = ints.[i % 5]
             Y = ints.[(i / 5) % 5]
             Z = ints.[(i / 25) % 5]
@@ -543,4 +755,9 @@ let envs : Env list =
             T = strings.[(i / 3) % 3]
             NX = nullables.[(i / 7) % 3]
             NY = nullables.[(i / 11) % 3]
-            D = doubles.[(i / 4) % 3] } ]
+            D = doubles.[(i / 4) % 6]
+            X2 = ints.[(i / 2) % 5]
+            U = ints.[(i / 3) % 5]
+            V = (i / 3) % 2 = 0
+            M = decimals.[(i / 2) % 4]
+            O = holders.[(i / 2) % 3] } ]

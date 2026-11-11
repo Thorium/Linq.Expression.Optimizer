@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <!--<TargetFramework>net10.0</TargetFramework>-->
     <TargetFramework>net481</TargetFramework>
     <IsPackable>false</IsPackable>
     <GenerateProgramFile>false</GenerateProgramFile>
@@ -12,15 +13,18 @@
     <Compile Include="Tests.fs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
-    <PackageReference Include="xunit" Version="2.4.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.4.2" />
-    <PackageReference Include="FsCheck.Xunit" Version="2.11.0" />
-    <PackageReference Include="FsUnit.xUnit" Version="3.2.0" />
-    <PackageReference Include="BenchmarkDotNet" Version="0.13.12" />
-    <PackageReference Update="FSharp.Core" Version="8.0.301" />
+    <PackageReference Include="coverlet.collector" Version="10.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageReference Include="FsCheck.Xunit" Version="3.6.0" />
+    <PackageReference Include="FsUnit.xUnit" Version="6.0.1" />
+    <!-- FsUnit.xUnit 6.0.1 brings NHamcrest 3.4.0, a Debug build that BenchmarkDotNet rejects -->
+    <PackageReference Include="NHamcrest" Version="4.0.0" />
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageReference Update="FSharp.Core" Version="10.1.302" />
   </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Linq.Expression.Optimizer\Linq.Expression.Optimizer.fsproj" />
   </ItemGroup>

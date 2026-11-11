@@ -46,6 +46,67 @@ type AnonymousObjectTest (name: string) =
 type MutableStruct =
     val mutable F : int
 
+/// An object that may be null, for member reads behind a null guard.
+[<AllowNullLiteral>]
+type Guarded (flag: bool) =
+    member _.Flag = flag
+
+/// Two instances print alike (the type name) and hold different values.
+type Named (name: string, price: decimal) =
+    member _.Name = name
+    member _.Price = price
+
+/// A method that gives another value on every call.
+type Counter () =
+    let mutable n = 0
+    member _.Next () =
+        n <- n + 1
+        n
+
+/// A property whose getter throws.
+type Throwing () =
+    member _.Value : int = failwith "the getter ran"
+
+/// The source of the arguments of an anonymous type, two members of one type.
+type Pair = { A: int; B: int }
+
+/// Named like a tuple, but its Item1 is not its first constructor argument.
+type TupleSorted (a: int, b: int) =
+    member _.Item1 = min a b
+    member _.Item2 = max a b
+
+/// Compares by value, while its == compares modulo 3: an operator of its own.
+[<CustomEquality; CustomComparison>]
+type Mod3 =
+    { V: int }
+    override this.Equals o = match o with :? Mod3 as m -> m.V = this.V | _ -> false
+    override this.GetHashCode () = this.V
+    interface IComparable with
+        member this.CompareTo o = compare this.V (o :?> Mod3).V
+    static member op_Equality (a: Mod3, b: Mod3) = a.V % 3 = b.V % 3
+    static member op_Inequality (a: Mod3, b: Mod3) = a.V % 3 <> b.V % 3
+
+/// The optimized tree against the original, as compiled functions.
+module Agreement =
+    /// What a lambda gives on the arguments: its value, or the exception it throws.
+    let outcome (lambda: LambdaExpression) (args: obj[]) =
+        try
+            match lambda.Compile().DynamicInvoke args with
+            | null -> "null"
+            | :? float as f -> f.ToString "R"
+            // a decimal is the same by value, whatever its scale: 6.00 is 6
+            | :? decimal as d -> d.ToString("G29", Globalization.CultureInfo.InvariantCulture)
+            | v -> v.ToString()
+        with :? Reflection.TargetInvocationException as e -> "throws " + e.InnerException.GetType().Name
+
+    /// Optimizing does not throw, and the optimized lambda gives the outcome of the
+    /// original on every input: the same value, or both throw.
+    let shouldAgree (lambda: LambdaExpression) (inputs: obj[] list) =
+        let optimized = ExpressionOptimizer.visit lambda :?> LambdaExpression
+        for args in inputs do
+            outcome optimized args |> should equal (outcome lambda args)
+        optimized
+
 module Queries =
     let executeExpression (e:Expression) =
         Expression.Lambda(e).Compile().DynamicInvoke() :?> System.Collections.IEnumerable |> Seq.cast |> Seq.toList
@@ -514,7 +575,12 @@ type ``Manual Test Fixture`` (output : ITestOutputHelper) =
     member test.``qry18 optimized select where``() = 
         let exp = optQry qry18
         output.WriteLine (exp.ToString())
+        // .NET Framework prints Convert(7), .NET prints Convert(7, Nullable`1)
+#if NETFRAMEWORK
         testLength 109 7 exp
+#else
+        testLength 133 7 exp
+#endif
 
     [<Xunit.Fact>]
     member test.``qry19 optimized select where``() = 
@@ -1263,6 +1329,301 @@ type MoreInternalTests (output : ITestOutputHelper) =
         let acc = Expression.Property(ne, item1) :> Expression
         (ExpressionOptimizer.visit acc).ToString() |> should equal "1"
 
+    // ---- Regression tests for 2026-11 optimizer fixes ----
+    // Agreement.shouldAgree: the optimized tree gives the outcome of the original
+    // (the same value, or both throw) on the inputs that used to tell them apart.
+
+    [<Xunit.Fact>]
+    member _.``A chain nested deeper than the stack is optimized without overflowing it`` () =
+        let x = Expression.Parameter(typeof<int>, "x")
+        let n = 20000
+        let chain =
+            Seq.init n (fun i -> Expression.Equal(x, Expression.Constant i) :> Expression)
+            |> Seq.reduce (fun l r -> Expression.OrElse(l, r) :> Expression)
+        let optimized = ref (null: Expression)
+        let failure = ref (null: exn)
+        let work () =
+            try optimized.Value <- ExpressionOptimizer.visit chain
+            with e -> failure.Value <- e
+        let thread = Threading.Thread(work, 256 * 1024)
+        thread.Start()
+        thread.Join()
+        isNull failure.Value |> should equal true
+        // the same comparisons in the same order under OrElse alone (walked without recursion)
+        let pending = Stack<Expression>()
+        pending.Push optimized.Value
+        let leaves: int list =
+            [
+                while pending.Count > 0 do
+                    match pending.Pop() with
+                    | :? BinaryExpression as be when be.NodeType = ExpressionType.OrElse ->
+                        pending.Push be.Right
+                        pending.Push be.Left
+                    | :? BinaryExpression as be when be.NodeType = ExpressionType.Equal && obj.ReferenceEquals(be.Left, x) ->
+                        ((be.Right :?> ConstantExpression).Value :?> int)
+                    | other -> failwithf "unexpected %O node" other.NodeType
+            ]
+        leaves |> should equal [ 0 .. n - 1 ]
+
+    [<Xunit.Fact>]
+    member _.``Two parameters are the same operand only by reference`` () =
+        let c (v: int) = Expression.Constant v :> Expression
+        // unnamed parameters
+        let a = Expression.Parameter typeof<int>
+        let b = Expression.Parameter typeof<int>
+        Agreement.shouldAgree (Expression.Lambda(Expression.Equal(a, b), a, b)) [ [| box 1; box 2 |]; [| box 2; box 2 |] ] |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.AndAlso(Expression.GreaterThan(a, c 5), Expression.GreaterThan(b, c 3)), a, b)) [ [| box 10; box 0 |]; [| box 10; box 4 |] ] |> ignore
+        // two lambdas written apart each have their "x"
+        let x1 = Expression.Parameter(typeof<Itm>, "x")
+        let x2 = Expression.Parameter(typeof<Itm>, "x")
+        let key (p: ParameterExpression) = Expression.Property(p, "x") :> Expression
+        Agreement.shouldAgree (Expression.Lambda(Expression.Equal(key x1, key x2), x1, x2)) [ [| box { x = 1 }; box { x = 2 } |] ] |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.NotEqual(key x1, key x2), x1, x2)) [ [| box { x = 1 }; box { x = 2 } |] ] |> ignore
+        let i1 = Expression.Parameter(typeof<int>, "x")
+        let i2 = Expression.Parameter(typeof<int>, "x")
+        Agreement.shouldAgree (Expression.Lambda(Expression.Subtract(i1, i2), i1, i2)) [ [| box 5; box 3 |] ] |> ignore
+        // one parameter is still itself
+        (ExpressionOptimizer.visit (Expression.Equal(key x1, key x1))).ToString() |> should equal "True"
+
+    [<Xunit.Fact>]
+    member _.``A rewrite does not move a read ahead of its guard`` () =
+        let o = Expression.Parameter(typeof<Guarded>, "o")
+        let q = Expression.Parameter(typeof<bool>, "q")
+        let nothing = Expression.Constant(null, typeof<Guarded>)
+        let flag () = Expression.Property(o, "Flag") :> Expression
+        let objects = [ [| null; box false |]; [| null; box true |]; [| box (Guarded true); box false |]; [| box (Guarded false); box true |] ]
+        // (o != null && (o.Flag || q)) && o.Flag
+        let guardedAnd = Expression.AndAlso(Expression.AndAlso(Expression.NotEqual(o, nothing), Expression.OrElse(flag (), q)), flag ())
+        Agreement.shouldAgree (Expression.Lambda(guardedAnd, o, q)) objects |> ignore
+        // (q && o.Flag) || (o == null || o.Flag)
+        let guardedOr = Expression.OrElse(Expression.AndAlso(q, flag ()), Expression.OrElse(Expression.Equal(o, nothing), flag ()))
+        Agreement.shouldAgree (Expression.Lambda(guardedOr, o, q)) objects |> ignore
+
+        let p = Expression.Parameter(typeof<bool>, "p")
+        let s = Expression.Parameter(typeof<string>, "s")
+        let notNull () = Expression.NotEqual(s, Expression.Constant(null, typeof<string>)) :> Expression
+        let hasLength () = Expression.GreaterThan(Expression.Property(s, "Length"), Expression.Constant 0) :> Expression
+        let strings =
+            [ for pv in [ true; false ] do
+                for qv in [ true; false ] do
+                    for sv in [ null; ""; "a" ] -> [| box pv; box qv; box sv |] ]
+        let guarded : Expression list =
+            [ // !(p || s != null) || (p || s.Length > 0)
+              Expression.OrElse(Expression.Not(Expression.OrElse(p, notNull ())), Expression.OrElse(p, hasLength ()))
+              // (!q || p) || (s.Length > 0 && !p)
+              Expression.OrElse(Expression.OrElse(Expression.Not q, p), Expression.AndAlso(hasLength (), Expression.Not p))
+              // !(q || p) || (!p && s.Length > 0)
+              Expression.OrElse(Expression.Not(Expression.OrElse(q, p)), Expression.AndAlso(Expression.Not p, hasLength ())) ]
+        for body in guarded do
+            Agreement.shouldAgree (Expression.Lambda(body, p, q, s)) strings |> ignore
+
+    [<Xunit.Fact>]
+    member _.``An anonymous type member is its constructor argument by position`` () =
+        // new { A = p.B, B = p.A }.A is p.B, though the argument named A is p.A
+        let anonymous = typeof<{| A: int; B: int |}>
+        let p = Expression.Parameter(typeof<Pair>, "p")
+        let arguments = [| Expression.Property(p, "B") :> Expression; Expression.Property(p, "A") :> Expression |]
+        let members = [| anonymous.GetProperty "A" :> Reflection.MemberInfo; anonymous.GetProperty "B" :> Reflection.MemberInfo |]
+        let ne = Expression.New(anonymous.GetConstructors().[0], arguments, members)
+        let optimized = Agreement.shouldAgree (Expression.Lambda(Expression.Property(ne, "A"), p)) [ [| box { A = 10; B = 20 } |] ]
+        optimized.Body.ToString() |> should equal "p.B"
+
+    [<Xunit.Fact>]
+    member _.``Only a tuple type has its ItemN read from the constructor argument`` () =
+        let x = Expression.Parameter(typeof<int>, "x")
+        let y = Expression.Parameter(typeof<int>, "y")
+        let sorted = Expression.New(typeof<TupleSorted>.GetConstructors().[0], [| x :> Expression; y :> Expression |])
+        Agreement.shouldAgree (Expression.Lambda(Expression.Property(sorted, "Item1"), x, y)) [ [| box 5; box 3 |] ] |> ignore
+        let tuple = Expression.New(typeof<Tuple<int, int>>.GetConstructors().[0], [| x :> Expression; y :> Expression |])
+        let optimized = Agreement.shouldAgree (Expression.Lambda(Expression.Property(tuple, "Item2"), x, y)) [ [| box 5; box 3 |] ]
+        optimized.Body |> should equal (y :> Expression)
+
+    [<Xunit.Fact>]
+    member _.``Operands that print alike are not the same operand`` () =
+        let flag = Expression.Parameter(typeof<bool>, "flag")
+        let a = Named("a", 5m)
+        let b = Named("b", 3m)
+        let read (n: Named) (property: string) = Expression.Property(Expression.Constant n, property) :> Expression
+        Agreement.shouldAgree (Expression.Lambda(Expression.Condition(flag, read a "Name", read b "Name"), flag)) [ [| box true |]; [| box false |] ] |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.Subtract(read a "Price", read b "Price"))) [ [||] ] |> ignore
+        let element (values: int[]) = Expression.ArrayIndex(Expression.Constant values, Expression.Constant 0) :> Expression
+        Agreement.shouldAgree (Expression.Lambda(Expression.Condition(flag, element [| 1 |], element [| 2 |]), flag)) [ [| box true |]; [| box false |] ] |> ignore
+        // a call may give another value each time: c.Next() - c.Next() is not 0
+        let counter = Expression.Constant(Counter())
+        let next () = Expression.Call(counter, typeof<Counter>.GetMethod "Next") :> Expression
+        Agreement.shouldAgree (Expression.Lambda(Expression.Subtract(next (), next ()))) [ [||] ] |> ignore
+        // the same read on both sides still folds
+        let x = Expression.Parameter(typeof<Itm>, "x")
+        let key () = Expression.Property(x, "x") :> Expression
+        (ExpressionOptimizer.visit (Expression.Subtract(key (), key ()))).ToString() |> should equal "0"
+        (ExpressionOptimizer.visit (Expression.Condition(flag, key (), key ()))).ToString() |> should equal "x.x"
+
+    [<Xunit.Fact>]
+    member _.``A range is not narrowed over a NaN constant or a nullable operand`` () =
+        let d = Expression.Parameter(typeof<float>, "d")
+        let above (limit: float) = Expression.GreaterThan(d, Expression.Constant limit) :> Expression
+        let doubles = [ [| box 6.0 |]; [| box 1.0 |]; [| box nan |] ]
+        Agreement.shouldAgree (Expression.Lambda(Expression.AndAlso(above nan, above 5.0), d)) doubles |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.OrElse(above nan, above 5.0), d)) doubles |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.AndAlso(above 5.0, above nan), d)) doubles |> ignore
+        // null >= null is false, while null == null is true
+        let nx = Expression.Parameter(typeof<Nullable<int>>, "nx")
+        let ny = Expression.Parameter(typeof<Nullable<int>>, "ny")
+        let between = Expression.AndAlso(Expression.GreaterThanOrEqual(nx, ny), Expression.LessThanOrEqual(nx, ny))
+        let nullables = [ [| null; null |]; [| box 1; box 1 |]; [| box 1; null |]; [| box 1; box 2 |] ]
+        Agreement.shouldAgree (Expression.Lambda(between, nx, ny)) nullables |> ignore
+        // a range of doubles without NaN is still narrowed
+        (ExpressionOptimizer.visit (Expression.AndAlso(above 3.0, above 5.0))).ToString() |> should equal "(d > 5)"
+
+    [<Xunit.Fact>]
+    member _.``A string range follows the ordinal order of the F# comparison`` () =
+        // "B" < "a" in ordinal order, "a" < "B" in a culture's
+        let words = [ "C"; "b"; "A"; "a" ].AsQueryable()
+        let expected, actual = testExpression (query { for s in words do where (s > "a" && s > "B"); select s })
+        actual |> should equal expected
+        let expected2, actual2 = testExpression (query { for s in words do where (s < "a" || s < "B"); select s })
+        actual2 |> should equal expected2
+
+    [<Xunit.Fact>]
+    member _.``Float and decimal constants are not regrouped, and their identities keep the value`` () =
+        let d = Expression.Parameter(typeof<float>, "d")
+        let c (v: float) = Expression.Constant v :> Expression
+        // (d + 1) + 1 rounds twice, d + 2 once
+        Agreement.shouldAgree (Expression.Lambda(Expression.Add(Expression.Add(d, c 1.0), c 1.0), d)) [ [| box 1e16 |] ] |> ignore
+        // (d * 10) * 0.1 overflows to infinity where d itself does not
+        Agreement.shouldAgree (Expression.Lambda(Expression.Multiply(Expression.Multiply(d, c 10.0), c 0.1), d)) [ [| box 1e308 |]; [| box 3.0 |] ] |> ignore
+        // d + 0.0 turns -0.0 into 0.0, so 1 / (d + 0.0) is +infinity there
+        Agreement.shouldAgree (Expression.Lambda(Expression.Divide(c 1.0, Expression.Add(d, c 0.0)), d)) [ [| box -0.0 |]; [| box 2.0 |] ] |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.Divide(c 1.0, Expression.Subtract(d, c -0.0)), d)) [ [| box -0.0 |] ] |> ignore
+        // ...while d + (-0.0), d - 0.0 and d * 1.0 are d for every d
+        ExpressionOptimizer.visit (Expression.Add(d, c -0.0)) |> should equal (d :> Expression)
+        ExpressionOptimizer.visit (Expression.Subtract(d, c 0.0)) |> should equal (d :> Expression)
+        ExpressionOptimizer.visit (Expression.Multiply(d, c 1.0)) |> should equal (d :> Expression)
+
+        let m = Expression.Parameter(typeof<decimal>, "m")
+        let dc (v: decimal) = Expression.Constant v :> Expression
+        // the merged constant would overflow here; the original overflows only for some m
+        Agreement.shouldAgree (Expression.Lambda(Expression.Add(Expression.Add(m, dc Decimal.MaxValue), dc 1m), m)) [ [| box -5m |]; [| box 0m |] ] |> ignore
+        // a decimal is the same by value, so its identities apply whatever the scale: m - m is 0, m * 1.0 is m
+        let scaled = [ [| box 1.50m |]; [| box 2m |] ]
+        Agreement.shouldAgree (Expression.Lambda(Expression.Subtract(m, m), m)) scaled |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.Multiply(m, dc 0m), m)) scaled |> ignore
+        ExpressionOptimizer.visit (Expression.Multiply(m, dc 1.0m)) |> should equal (m :> Expression)
+        ExpressionOptimizer.visit (Expression.Add(m, dc 0.00m)) |> should equal (m :> Expression)
+        ExpressionOptimizer.visit (Expression.Subtract(m, dc 0m)) |> should equal (m :> Expression)
+        ExpressionOptimizer.visit (Expression.Divide(m, dc 1m)) |> should equal (m :> Expression)
+        // decimal constants fold, a whole number written with decimals too: a translator to SQL takes a constant, not 2.0 * 3.0
+        for folded in [ Expression.Add(dc 1.25m, dc 2m); Expression.Multiply(dc 2.0m, dc 3.0m); Expression.Add(dc 20.00m, dc 5m)
+                        Expression.Subtract(dc 20.00m, dc 20m); Expression.Multiply(dc 0.00m, dc 1.50m) ] do
+            (ExpressionOptimizer.visit folded).NodeType |> should equal ExpressionType.Constant
+            Agreement.shouldAgree (Expression.Lambda folded) [ [||] ] |> ignore
+        // integers are still regrouped and folded
+        let x = Expression.Parameter(typeof<int>, "x")
+        (ExpressionOptimizer.visit (Expression.Add(Expression.Add(x, Expression.Constant 2), Expression.Constant 3))).ToString() |> should equal "(x + 5)"
+
+    [<Xunit.Fact>]
+    member _.``A constant fold that overflows is left for the run time`` () =
+        let flag = Expression.Parameter(typeof<bool>, "flag")
+        let overflow = Expression.Add(Expression.Constant Decimal.MaxValue, Expression.Constant 1m)
+        // the branch that overflows is not the one taken
+        Agreement.shouldAgree (Expression.Lambda(Expression.Condition(flag, overflow, Expression.Constant 0m), flag)) [ [| box false |]; [| box true |] ] |> ignore
+
+    [<Xunit.Fact>]
+    member _.``A nullable operand is not dropped by x times 0 or x modulo 1`` () =
+        let nx = Expression.Parameter(typeof<Nullable<int>>, "nx")
+        let c (v: int) = Expression.Constant(Nullable v, typeof<Nullable<int>>) :> Expression
+        let bodies : Expression list = [ Expression.Multiply(nx, c 0); Expression.Multiply(c 0, nx); Expression.Modulo(nx, c 1) ]
+        for body in bodies do
+            Agreement.shouldAgree (Expression.Lambda(body, nx)) [ [| null |]; [| box 3 |] ] |> ignore
+        // a plain int still folds
+        let x = Expression.Parameter(typeof<int>, "x")
+        (ExpressionOptimizer.visit (Expression.Multiply(x, Expression.Constant 0))).ToString() |> should equal "0"
+
+    [<Xunit.Fact>]
+    member _.``String concatenation over an object operand is merged without throwing`` () =
+        let concat = typeof<string>.GetMethod("Concat", [| typeof<obj>; typeof<obj> |])
+        let concatStrings = typeof<string>.GetMethod("Concat", [| typeof<string>; typeof<string> |])
+        let x = Expression.Parameter(typeof<int>, "x")
+        let s = Expression.Parameter(typeof<string>, "s")
+        // (x + "a") + "b", as the C# compiler writes it
+        let inner = Expression.Add(Expression.Convert(x, typeof<obj>), Expression.Constant "a", concat)
+        let optimized = Agreement.shouldAgree (Expression.Lambda(Expression.Add(inner, Expression.Constant "b", concatStrings), x)) [ [| box 1 |] ]
+        optimized.Body.ToString().Contains "\"ab\"" |> should equal true
+        // a boxed constant on the left of a concatenation is not a string
+        Agreement.shouldAgree (Expression.Lambda(Expression.Add(Expression.Constant(box 5, typeof<obj>), s, concat), s)) [ [| box "z" |]; [| null |] ] |> ignore
+
+    [<Xunit.Fact>]
+    member _.``Nodes without a rule stay as they are`` () =
+        let x = Expression.Parameter(typeof<int>, "x")
+        let o = Expression.Parameter(typeof<obj>, "o")
+        let s = Expression.Parameter(typeof<string>, "s")
+        let numbers = Expression.Parameter(typeof<int[]>, "numbers")
+        let one = Expression.Constant 1
+        Agreement.shouldAgree (Expression.Lambda(Expression.Add(Expression.Default typeof<int>, x), x)) [ [| box 1 |] ] |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.ArrayAccess(numbers, x), numbers, x)) [ [| box [| 4; 5 |]; box 1 |] ] |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.TypeEqual(o, typeof<string>), o)) [ [| box "s" |]; [| box 1 |] ] |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.Switch(x, Expression.Constant 0, Expression.SwitchCase(one, one)), x)) [ [| box 1 |]; [| box 2 |] ] |> ignore
+        let guarded = Expression.TryCatch(Expression.Divide(one, x), Expression.Catch(typeof<DivideByZeroException>, Expression.Constant 0))
+        Agreement.shouldAgree (Expression.Lambda(guarded, x)) [ [| box 0 |]; [| box 1 |] ] |> ignore
+        // a block that assigns a parameter has no variable of its own
+        let block = Expression.Block(Expression.Assign(s, Expression.Constant "abc"), Expression.Property(s, "Length"))
+        Agreement.shouldAgree (Expression.Lambda(block, s)) [ [| box "z" |] ] |> ignore
+
+    [<Xunit.Fact>]
+    member _.``A typed conditional keeps its type when a child is rewritten`` () =
+        let p = Expression.Parameter(typeof<bool>, "p")
+        let test () = Expression.Not(Expression.Not p) :> Expression
+        // branches of two types under a common one
+        let typed = Expression.Condition(test (), Expression.Constant "a", Expression.Constant(box 1, typeof<obj>), typeof<obj>)
+        Agreement.shouldAgree (Expression.Lambda(typed, p)) [ [| box true |]; [| box false |] ] |> ignore
+        // IfThenElse is a conditional of type void
+        let statement = Expression.IfThenElse(test (), Expression.Constant 1, Expression.Constant "a")
+        Agreement.shouldAgree (Expression.Lambda(statement, p)) [ [| box true |] ] |> ignore
+        (ExpressionOptimizer.visit statement).Type |> should equal typeof<Void>
+
+    [<Xunit.Fact>]
+    member _.``A Nullable bool constant and a lifted comparison keep their type`` () =
+        let nb = Expression.Parameter(typeof<Nullable<bool>>, "nb")
+        let no = Expression.Constant(Nullable false, typeof<Nullable<bool>>)
+        Agreement.shouldAgree (Expression.Lambda(Expression.Not no)) [ [||] ] |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.And(Expression.Not no, nb), nb)) [ [| box true |]; [| null |] ] |> ignore
+        // lifted to null: the comparison is a Nullable<bool>
+        let five () = Expression.Constant(Nullable 5, typeof<Nullable<int>>)
+        Agreement.shouldAgree (Expression.Lambda(Expression.Equal(five (), five (), true, null))) [ [||] ] |> ignore
+
+    [<Xunit.Fact>]
+    member _.``A constant's member that throws is left for the run time`` () =
+        let p = Expression.Parameter(typeof<bool>, "p")
+        let read = Expression.Property(Expression.Constant(Throwing()), "Value")
+        // the read is in the branch not taken
+        Agreement.shouldAgree (Expression.Lambda(Expression.Condition(p, read, Expression.Constant 0), p)) [ [| box false |]; [| box true |] ] |> ignore
+
+    [<Xunit.Fact>]
+    member _.``A constant query over a list is visited without throwing`` () =
+        let numbers = (List<int>([ 1; 2; 3 ])).Where(fun v -> v > 1).AsQueryable()
+        let count = Expression.Call(typeof<Queryable>, "Count", [| typeof<int> |], Expression.Constant numbers)
+        Agreement.shouldAgree (Expression.Lambda count) [ [||] ] |> ignore
+
+    [<Xunit.Fact>]
+    member _.``A node with a Method of its own is not folded`` () =
+        let x = Expression.Parameter(typeof<int>, "x")
+        let max = typeof<Math>.GetMethod("Max", [| typeof<int>; typeof<int> |])
+        // + with Math.Max as its method: 1 + 2 is 2, x + 0 is max(x, 0)
+        Agreement.shouldAgree (Expression.Lambda(Expression.Add(Expression.Constant 1, Expression.Constant 2, max))) [ [||] ] |> ignore
+        Agreement.shouldAgree (Expression.Lambda(Expression.Add(x, Expression.Constant 0, max), x)) [ [| box -5 |] ] |> ignore
+        // == of a type whose operator is not its Equals
+        let equality = typeof<Mod3>.GetMethod "op_Equality"
+        Agreement.shouldAgree (Expression.Lambda(Expression.Equal(Expression.Constant { V = 1 }, Expression.Constant { V = 4 }, false, equality))) [ [||] ] |> ignore
+
+    [<Xunit.Fact>]
+    member _.``Objects are compared by reference, not by value`` () =
+        let text () = Expression.Constant(String('a', 1), typeof<obj>)
+        Agreement.shouldAgree (Expression.Lambda(Expression.Equal(text (), text ()))) [ [||] ] |> ignore
+        let boxed () = Expression.Constant(box 1, typeof<obj>)
+        Agreement.shouldAgree (Expression.Lambda(Expression.Equal(boxed (), boxed ()))) [ [||] ] |> ignore
+        // the same constant is the same object
+        let one = boxed ()
+        Agreement.shouldAgree (Expression.Lambda(Expression.Equal(one, one))) [ [||] ] |> ignore
 
 
 [<MemoryDiagnoser>]
