@@ -1,3 +1,8 @@
+### 1.0.42 - 11/11/2026
+* DateOnly and TimeOnly operators are built-in again: two constants fold, and the range and equality rules apply
+* Two Version constants fold again
+* c ? y : y keeps both branches for 0.0 and -0.0, a DateTimeOffset in two offsets and a DateTime of two kinds
+
 ### 1.0.41 - 10/11/2026
 * Visited expressions are cached per run: a shared or rewritten subtree is reduced once
 * A constant MinValue / -1 and an empty-string concatenation of a nullable string are left alone

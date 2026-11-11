@@ -1529,6 +1529,48 @@ type MoreInternalTests (output : ITestOutputHelper) =
         Agreement.shouldAgree (Expression.Lambda(Expression.Condition(flag, overflow, Expression.Constant 0m), flag)) [ [| box false |]; [| box true |] ] |> ignore
 
     [<Xunit.Fact>]
+    member _.``A branch is dropped only for a constant that nothing tells apart from the other`` () =
+        let flag = Expression.Parameter(typeof<bool>, "flag")
+        let pick (a: obj) (b: obj) = Expression.Condition(flag, Expression.Constant a, Expression.Constant b)
+        // Equals holds for 0.0 and -0.0, for an instant in two offsets and for the same ticks of two kinds
+        let noon = DateTimeOffset(2026, 1, 1, 12, 0, 0, TimeSpan.Zero)
+        let ticks = DateTime(2026, 1, 1, 12, 0, 0)
+        let apart : Expression list =
+            [ Expression.Divide(Expression.Constant 1.0, pick (box 0.0) (box (-0.0)))
+              Expression.Divide(Expression.Constant 1.0f, pick (box 0.0f) (box (-0.0f)))
+              Expression.Property(pick (box noon) (box (noon.ToOffset(TimeSpan.FromHours 2.))), "Offset")
+              Expression.Property(pick (box (DateTime.SpecifyKind(ticks, DateTimeKind.Utc))) (box (DateTime.SpecifyKind(ticks, DateTimeKind.Local))), "Kind") ]
+        for body in apart do
+            Agreement.shouldAgree (Expression.Lambda(body, flag)) [ [| box true |]; [| box false |] ] |> ignore
+        // the same value still leaves one branch
+        for same in [ pick (box 1.5) (box 1.5); pick (box (-0.0)) (box (-0.0)); pick (box nan) (box nan); pick (box noon) (box noon); pick (box 6.0m) (box 6.00m) ] do
+            (ExpressionOptimizer.visit same).NodeType |> should equal ExpressionType.Constant
+
+    [<Xunit.Fact>]
+    member _.``Two constants of a date, time or version type fold to a bool`` () =
+        let comparisons =
+            [ ExpressionType.Equal; ExpressionType.NotEqual; ExpressionType.LessThan; ExpressionType.LessThanOrEqual
+              ExpressionType.GreaterThan; ExpressionType.GreaterThanOrEqual ]
+        let folds (l: obj) (r: obj) =
+            for comparison in comparisons do
+                for a, b in [ l, r; r, l; l, l ] do
+                    let node = Expression.MakeBinary(comparison, Expression.Constant a, Expression.Constant b)
+                    (ExpressionOptimizer.visit node).NodeType |> should equal ExpressionType.Constant
+                    Agreement.shouldAgree (Expression.Lambda node) [ [||] ] |> ignore
+        folds (Version(1, 2)) (Version(1, 10))
+        folds (TimeSpan.FromHours 1.) (TimeSpan.FromHours 2.)
+        folds (DateTime(2026, 1, 1)) (DateTime(2026, 6, 1))
+#if NET6_0_OR_GREATER
+        folds (DateOnly(2026, 1, 1)) (DateOnly(2026, 6, 1))
+        folds (TimeOnly(9, 0)) (TimeOnly(17, 30))
+#endif
+        // a Version that isn't a constant keeps its own operators: on .NET Framework they throw on null
+        let v = Expression.Parameter(typeof<Version>, "v")
+        let one = Expression.Constant(Version(1, 0))
+        let either = Expression.OrElse(Expression.LessThan(v, one), Expression.GreaterThanOrEqual(v, one))
+        (ExpressionOptimizer.visit either).NodeType |> should equal ExpressionType.OrElse
+
+    [<Xunit.Fact>]
     member _.``A nullable operand is not dropped by x times 0 or x modulo 1`` () =
         let nx = Expression.Parameter(typeof<Nullable<int>>, "nx")
         let c (v: int) = Expression.Constant(Nullable v, typeof<Nullable<int>>) :> Expression

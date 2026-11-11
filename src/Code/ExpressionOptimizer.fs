@@ -24,8 +24,13 @@ module Methods =
         t.IsGenericType && Type.(=)(t.GetGenericTypeDefinition(), typedefof<Nullable<_>>)
 
     /// The types whose own operators mean what the rules assume of an operator.
+    /// DateOnly and TimeOnly are looked up by name: netstandard2.0 doesn't have them.
     let private builtInOperatorTypes =
-        HashSet<Type>([ typeof<string>; typeof<decimal>; typeof<DateTime>; typeof<DateTimeOffset>; typeof<TimeSpan>; typeof<Guid>; typeof<bigint> ])
+        let named =
+            [ "System.DateOnly"; "System.TimeOnly" ]
+            |> List.map (fun (name:string) -> Type.GetType name)
+            |> List.filter (isNull >> not)
+        HashSet<Type>([ typeof<string>; typeof<decimal>; typeof<DateTime>; typeof<DateTimeOffset>; typeof<TimeSpan>; typeof<Guid>; typeof<bigint> ] @ named)
 
     /// A type the F# operators compare as a total order with reflexive equality:
     /// a primitive, an enum or one of builtInOperatorTypes, or a Nullable, option,
@@ -67,17 +72,38 @@ module Methods =
              (Type.(=)(m.DeclaringType, typeof<string>) && m.IsStatic && (m.Name = "Concat" || m.Name = "Equals")))) ||
         (isFSharpOperator m && isOrderedType true operandType)
 
+    /// A comparison of two Versions by Version's own operator or the F# one. It agrees
+    /// with Version's IComparable, so two constants fold. Version is not one of
+    /// builtInOperatorTypes: on .NET Framework its operators throw on a null operand,
+    /// which a rewrite of non-constant operands could hide.
+    let private isVersionComparison (m:MethodInfo) (operandType:Type) =
+        not (isNull m) && Type.(=)(operandType, typeof<Version>) &&
+        ((Type.(=)(m.DeclaringType, typeof<Version>) && m.Name.StartsWith("op_", StringComparison.Ordinal)) || isFSharpOperator m)
+
     let private isStringConcat (m:MethodInfo) =
         not (isNull m) && Type.(=)(m.DeclaringType, typeof<string>) && m.Name = "Concat"
 
-    /// Constants of one type holding the same reference, or the same value for value
-    /// types and strings. A boxed value typed as object is compared by reference.
+    /// Two values that Equals, and that nothing read from them tells apart: Equals
+    /// also holds for 0.0 and -0.0, for a DateTimeOffset at the same instant in
+    /// another offset and for a DateTime with the same ticks of another Kind.
+    /// (Decimals of another scale, 6.0 and 6.00, stay the same value.)
+    let private sameValue (v1:obj) (v2:obj) =
+        v1.Equals v2 &&
+        (match v1, v2 with
+         | (:? float as f1), (:? float as f2) -> f1 <> 0.0 || 1.0 / f1 = 1.0 / f2
+         | (:? float32 as f1), (:? float32 as f2) -> f1 <> 0.0f || 1.0f / f1 = 1.0f / f2
+         | (:? DateTimeOffset as d1), (:? DateTimeOffset as d2) -> d1.Offset = d2.Offset
+         | (:? DateTime as d1), (:? DateTime as d2) -> d1.Kind = d2.Kind
+         | _ -> true)
+
+    /// Constants of one type holding the same reference, or the same value (sameValue)
+    /// for value types and strings. A boxed value typed as object is compared by reference.
     let private sameConstant (c1:ConstantExpression) (c2:ConstantExpression) =
         Type.(=)(c1.Type, c2.Type) &&
         (obj.ReferenceEquals(c1.Value, c2.Value) ||
          (not (isNull c1.Value || isNull c2.Value) &&
           (c1.Type.IsValueType || Type.(=)(c1.Type, typeof<string>)) &&
-          c1.Value.Equals c2.Value))
+          sameValue c1.Value c2.Value))
 
     /// Reads only: parameters, constants, instance members and built-in operators, with
     /// no call, Invoke, New, index or assignment anywhere (to a bounded depth), so the
@@ -177,7 +203,8 @@ module Methods =
     let ``replace constant comparison`` (e:Expression) =
         match e with
         | (:? BinaryExpression as ce)
-            when Type.(=)(ce.Type, typeof<bool>) && isBuiltInOperator ce.Method ce.Left.Type
+            when Type.(=)(ce.Type, typeof<bool>)
+                 && (isBuiltInOperator ce.Method ce.Left.Type || isVersionComparison ce.Method ce.Left.Type)
                  && (not (isNull ce.Method) || ce.Left.Type.IsValueType) ->
             let (|Constant|_|) (e:Expression) = 
                 match e.NodeType, e with 
